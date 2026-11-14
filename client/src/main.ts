@@ -34,7 +34,7 @@ const I4 = trans(0, 0, 0);
 const savedLooks = store.get<Record<string, any>>('looks', {});
 const lookFor = (id: string) => sanitizeLook(savedLooks[id], carById(id));
 const me = {
-  name: store.get('name', ''), model: carById(store.get('model', 'atto3')).id, look: null as unknown as Look,
+  name: store.get('name', ''), model: carById(store.get('model', 'dolphin')).id, look: null as unknown as Look,
   x: 0, z: 15, h: Math.PI, v: 0, steer: 0, spin: 0, roll: 0, pitch: 0, brake: false,
   dirt: store.get('dirt', 0.45), foam: 0, gloss: 0, bubble: '', bubbleT: 0,
 };
