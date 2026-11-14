@@ -2,7 +2,7 @@
 import { Renderer, DrawItem, Env, Mesh } from './renderer';
 import { buildWorld, PLACES, Place, WASH_BAYS, DISPLAY_SPOTS, confine, onRoad, Collider } from './world';
 import { CARS, CarSpec, Look, carById, buildCar, palette, defaultLook, sanitizeLook, BODY_COLORS, RIM_COLORS, TRIM_COLORS, WHEEL_NAMES, DECAL_NAMES, PLATES } from './cars';
-import { Net, Remote } from './net';
+import { Net, Remote, RaceResult } from './net';
 import { MB } from './geom';
 import { M4, V3, mul, trans, rotX, rotY, rotZ, lerp, clamp, angLerp, norm } from './math';
 
@@ -171,7 +171,8 @@ function drive(dt: number) {
   const hb = keys.has('Space');
   const road = onRoad(me.x, me.z), vmax = road ? 30 : 17, v0 = me.v;
   me.brake = false;
-  if (!started || washAnim) { me.v = lerp(me.v, 0, Math.min(1, dt * 6)); }
+  const frozen = !started || !!washAnim || raceFrozen();
+  if (frozen) { me.v = lerp(me.v, 0, Math.min(1, dt * 6)); }
   else {
     if (up && !dn) { if (me.v < -0.3) { me.v += 20 * dt; me.brake = true; } else me.v += 9.5 * Math.max(0, 1 - me.v / vmax) * dt; }
     else if (dn && !up) { if (me.v > 0.4) { me.v -= 22 * dt; me.brake = true; } else me.v -= 6 * Math.max(0, 1 + me.v / 9) * dt; }
@@ -182,7 +183,7 @@ function drive(dt: number) {
   }
   const maxSteer = lerp(0.6, 0.11, clamp(Math.abs(me.v) / 26, 0, 1));
   const sIn = lf || rt ? (lf ? 1 : 0) - (rt ? 1 : 0) : pad.stick;
-  const target = (started && !washAnim ? sIn : 0) * maxSteer;
+  const target = (frozen ? 0 : sIn) * maxSteer;
   me.steer += (target - me.steer) * Math.min(1, dt * (target === 0 ? 7 : pad.stick ? 8 : 4.5));
   const yawRate = me.v / spec.wb * Math.tan(me.steer);
   me.h += yawRate * dt;
@@ -204,7 +205,7 @@ function drive(dt: number) {
         else { const ex = hx2 - Math.abs(px - c.x), ez = hz2 - Math.abs(pz - c.z); if (ex < ez) { nx = Math.sign(px - c.x) || 1; pen = ex + r; } else { nz = Math.sign(pz - c.z) || 1; pen = ez + r; } } }
       me.x += nx * pen; me.z += nz * pen; hit = true;
     }
-    for (const o of net.players.values()) { const dx = px - o.x, dz = pz - o.z, d = Math.hypot(dx, dz); if (d < r + 1.05 && d > 1e-4) { const pen = r + 1.05 - d; me.x += dx / d * pen; me.z += dz / d * pen; hit = true; } }
+    for (const o of net.players.values()) { if (racing() !== (net.race.phase === 'running' && net.race.ids.has(o.id))) continue; const dx = px - o.x, dz = pz - o.z, d = Math.hypot(dx, dz); if (d < r + 1.05 && d > 1e-4) { const pen = r + 1.05 - d; me.x += dx / d * pen; me.z += dz / d * pen; hit = true; } }
   }
   if (confine(me)) hit = true;
   if (hit) me.v *= 1 - Math.min(1, dt * 5);
@@ -260,6 +261,74 @@ function updateWash(dt: number) {
     renderZone();
   }
 }
+
+// ---------- 레이스 (판정은 서버, 여기서는 표시와 입력 제한만)
+let joined = false, goT = 0;
+const inRace = () => joined && net.race.ids.has(net.id);
+const racing = () => inRace() && net.race.phase === 'running';
+const raceFrozen = () => inRace() && (net.race.phase === 'lobby' || net.race.phase === 'countdown');
+const fmt = (ms: number) => { const s = ms / 1000; return `${Math.floor(s / 60)}:${(s % 60).toFixed(2).padStart(5, '0')}`; };
+let gateMesh: Mesh | null = null; const gatePal = new Float32Array(24); gatePal.set([0.45, 0.95, 0.8], 18);
+function gate() {
+  if (gateMesh) return gateMesh;
+  const mb = new MB(); mb.m(6); mb.disc(0, 0.1, 0, 9.5, 10.6, 36);
+  for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; mb.cyl(Math.cos(a) * 10, 0.1, Math.sin(a) * 10, 0.16, 0.16, 5, 6, true); }
+  mb.cyl(0, 9, 0, 0.05, 1.5, 2.8, 14, false); mb.blob(0, 12.4, 0, 1.6, 1.6, 1.6, 14, 8);
+  return gateMesh = R.mesh(mb.build());
+}
+function placeAt(x: number, z: number, h: number) {
+  me.x = x; me.z = z; me.h = h; me.v = 0; me.steer = 0; cam.h = h; cam.yaw = 0;
+  cam.tgt = [x, 1.25, z]; cam.eye = [x - Math.sin(h) * cam.dist * Math.cos(cam.pitch), 1.25 + cam.dist * Math.sin(cam.pitch), z - Math.cos(h) * cam.dist * Math.cos(cam.pitch)];
+  flashScreen();
+}
+function setupRace() {
+  net.on.raceSlot = pos => { joined = true; setDest(null); placeAt(pos[0], pos[1], pos[2]); toast('🏁 그리드에 정렬했어요. 출발 신호를 기다리세요'); zoneKey = ''; };
+  net.on.race = () => {
+    if (joined && !net.race.ids.has(net.id) && net.race.phase !== 'idle') { joined = false; toast('레이스에서 제외됐어요'); }
+    if (net.race.phase === 'idle' && !net.race.ids.size) joined = false;
+    if (net.race.phase === 'running' && inRace()) goT = time;
+    $('nav').classList.toggle('race', racing());
+    if (!racing() && !dest) $('nav').classList.add('hidden');
+    zoneKey = '';
+  };
+  net.on.cp = n => { if (n < net.cps.length) toast(`체크포인트 ${n}/${net.cps.length}`); };
+  net.on.raceEnd = res => { joined = false; $('nav').classList.remove('race'); $('nav').classList.add('hidden'); if (res.some(r => r.id === net.id)) openResults(res); zoneKey = ''; };
+}
+function updateRace() {
+  const c = $('count'), r = net.race;
+  if (inRace() && r.phase === 'countdown') { const n = Math.ceil((r.until - performance.now()) / 1000); c.textContent = n > 3 ? '' : String(Math.max(1, n)); c.classList.remove('go'); }
+  else if (racing() && time - goT < 1.2) { c.textContent = 'GO!'; c.classList.add('go'); }
+  else if (c.textContent) c.textContent = '';
+  if (!racing()) return;
+  const mine = r.prog.get(net.id) ?? 0, total = net.cps.length;
+  // 순위: 통과한 체크포인트 수 → 다음 체크포인트까지 거리
+  const score = (id: number, x: number, z: number) => { const cp = r.prog.get(id) ?? 0; const g = net.cps[Math.min(cp, total - 1)]; return cp * 10000 - Math.hypot(g[0] - x, g[1] - z); };
+  const my = score(net.id, me.x, me.z); let rank = 1;
+  for (const o of net.players.values()) if (r.ids.has(o.id) && score(o.id, o.x, o.z) > my) rank++;
+  const nav = $('nav'); nav.classList.remove('hidden');
+  if (mine >= total) { $('navText').textContent = `🏁 완주! 다른 참가자를 기다리는 중`; return; }
+  const g = net.cps[mine], rel = Math.atan2(g[0] - me.x, g[1] - me.z) - (cam.h + cam.yaw);
+  $('navArrow').style.transform = `rotate(${(-rel).toFixed(2)}rad)`;
+  $('navText').textContent = `${rank}위 · ${mine}/${total} · ${fmt(performance.now() - r.t0)}`;
+}
+function rankRow(i: number, name: string, right: string, mine = false, sub = '') {
+  const d = el('div', `rank r${i + 1}` + (mine ? ' mine' : '')); const s = el('span', '', name); if (sub) s.append(el('small', '', sub));
+  d.append(el('i', '', String(i + 1)), s, el('b', '', right)); return d;
+}
+function openResults(res: RaceResult[]) {
+  sheetBody.innerHTML = ''; sheet.classList.remove('hidden');
+  const myRank = res.findIndex(r => r.id === net.id);
+  sheetBody.append(el('h2', '', '🏁 레이스 결과'), el('p', '', res[myRank]?.ms ? `${myRank + 1}위로 완주했어요!` : '완주하지 못했어요. 다시 도전해 보세요.'));
+  res.forEach((r, i) => sheetBody.append(rankRow(i, r.name, r.ms ? fmt(r.ms) : '미완주', r.id === net.id, 'BYD ' + carById(r.model).name)));
+  bestList();
+}
+function bestList() {
+  sheetBody.append(el('div', 'lbl', '🏆 오늘의 기록 (해안도로 한 바퀴)'));
+  if (!net.best.length) sheetBody.append(el('p', '', '아직 기록이 없어요. 첫 기록의 주인공이 되어보세요.'));
+  net.best.forEach((b, i) => sheetBody.append(rankRow(i, b.name, fmt(b.ms), false, 'BYD ' + carById(b.model).name)));
+  sheetBody.append(el('p', 'fine', '기록은 서버가 재시작되면 초기화됩니다.'));
+}
+function openBest() { sheetBody.innerHTML = ''; sheet.classList.remove('hidden'); sheetBody.append(el('h2', '', '🏎️ 서킷 기록')); bestList(); }
 
 // ---------- 카메라
 function updateCamera(dt: number) {
@@ -398,10 +467,11 @@ function pinFor(p: Place) {
   m = R.mesh(mb.build()); pinMesh.set(p.id, m); return m;
 }
 function setDest(p: Place | null) {
+  if (p && inRace()) { toast('레이스 중에는 목적지를 설정할 수 없어요'); return; }
   if (p && place === p) { toast(`이미 ${p.name}에 있어요`); p = null; }
   dest = p;
   document.querySelectorAll<HTMLElement>('#placeList button').forEach(b => { (b.lastChild as HTMLElement).textContent = b.dataset.id === dest?.id ? '안내 중' : ''; });
-  $('nav').classList.toggle('hidden', !dest); dropTag('dest');
+  $('nav').classList.toggle('hidden', !dest && !racing()); dropTag('dest');
   if (dest) toast(`📍 ${dest.name}까지 핀을 따라 운전해 보세요`);
 }
 function updateNav() {
@@ -414,6 +484,7 @@ function updateNav() {
 }
 function teleport(p: Place) {
   if (washAnim) return;
+  if (inRace()) { net.send({ t: 'race_leave' }); joined = false; }
   const j = Math.random() * 2 - 1;
   me.x = p.spawn[0] + (p.id === 'lounge' ? j * 7 : 0); me.z = p.spawn[1]; me.h = p.spawn[2]; me.v = 0; me.steer = 0; cam.h = me.h; cam.yaw = 0;
   const a = cam.h; cam.tgt = [me.x, 1.25, me.z]; cam.eye = [me.x - Math.sin(a) * cam.dist * Math.cos(cam.pitch), 1.25 + cam.dist * Math.sin(cam.pitch), me.z - Math.cos(a) * cam.dist * Math.cos(cam.pitch)];
@@ -424,6 +495,19 @@ let zoneKey = '';
 function renderZone() {
   const z = $('zone'); z.innerHTML = '';
   const btn = (t: string, fn: () => void, ghost = false) => { const b = el('button', 'btn sm' + (ghost ? ' ghost' : ''), t); b.onclick = fn; z.append(b); return b; };
+  if (inRace() || place?.id === 'race') {
+    const r = net.race, n = r.ids.size, sec = Math.max(0, Math.ceil((r.until - performance.now()) / 1000));
+    if (!net.online) { z.append(el('span', '', '🏎️ 서버에 연결되면 레이스에 참가할 수 있어요')); return; }
+    if (inRace()) {
+      if (r.phase === 'lobby') { z.append(el('span', '', `🏁 출발 대기 ${n}/${r.max}명 · ${sec}초`)); btn('취소', () => { net.send({ t: 'race_leave' }); joined = false; }, true); }
+      return;
+    }
+    if (r.phase === 'countdown' || r.phase === 'running') { z.append(el('span', '', `🏎️ 경기 진행 중 (${n}명) · 끝나면 참가할 수 있어요`)); btn('🏆 기록', openBest, true); return; }
+    z.append(el('span', '', r.phase === 'lobby' ? `🏎️ 모집 중 ${n}/${r.max}명 · ${sec}초 후 출발` : '🏎️ 해안도로 한 바퀴 · 혼자면 타임어택'));
+    if (n < r.max) btn('🏁 참가', () => net.send({ t: 'race_join' }));
+    btn('🏆 기록', openBest, true);
+    return;
+  }
   if (!place) return;
   if (place.id === 'wash') {
     if (washAnim) { z.append(el('span', '', washAnim.kind === 'foam' ? '🫧 거품 뿌리는 중…' : washAnim.kind === 'rinse' ? '💦 헹구는 중…' : '✨ 광택 내는 중…')); return; }
@@ -448,7 +532,8 @@ function updateZone() {
     if (place) { const b = $('banner'); b.innerHTML = ''; b.append(document.createTextNode(place.icon + ' ' + place.name), el('small', '', place.desc)); b.classList.add('on'); clearTimeout(bannerT); bannerT = window.setTimeout(() => b.classList.remove('on'), 3200); }
     if (!place || place.id !== 'wash') { if (washStage === 2) washStage = 0; }
   }
-  const key = (place?.id ?? '') + '|' + (place?.id === 'wash' ? [inBay(), Math.abs(me.v) > 0.6, washStage, !!washAnim].join() : '');
+  const rc = inRace() || place?.id === 'race' ? [net.online, net.race.phase, net.race.ids.size, inRace(), Math.ceil((net.race.until - performance.now()) / 1000)].join() : '';
+  const key = (place?.id ?? '') + '|' + (place?.id === 'wash' ? [inBay(), Math.abs(me.v) > 0.6, washStage, !!washAnim].join() : '') + rc;
   if (key !== zoneKey) { zoneKey = key; renderZone(); }
 }
 let bannerT = 0;
@@ -531,7 +616,7 @@ function frame(now: number) {
   env = envAt(settings.tod === 'auto' ? todClock : TOD_FIX[settings.tod]);
 
   drive(dt); updateWash(dt); updateCamera(dt);
-  if (started) { updateZone(); updateNav(); }
+  if (started) { updateZone(); updateNav(); updateRace(); }
 
   // 원격 플레이어 보간
   for (const o of net.players.values()) {
@@ -549,6 +634,7 @@ function frame(now: number) {
   const bounce = Math.sin(time * 9) * 0.004 * Math.min(1, Math.abs(me.v) / 6);
   pushCar(items, me, me.model, me.look, me.x, bounce, me.z, me.h, me.steer, me.spin, me.dirt, me.foam, me.gloss, me.brake, me.roll, me.pitch);
   for (const o of net.players.values()) pushCar(items, o, o.model, o.look, o.x, 0, o.z, o.h, o.st * 0.5, o.spin, o.dirt, o.foam, 0, o.brake);
+  if (racing()) { const g = net.cps[net.race.prog.get(net.id) ?? 0]; if (g) items.push({ mesh: gate(), m: mul(trans(g[0], 0, g[1]), rotY(time * 0.5)), pal: gatePal }); }
   if (dest) items.push({ mesh: pinFor(dest), m: mul(trans(dest.x, Math.sin(time * 2.2) * 0.25, dest.z), rotY(time * 0.8)), pal: pinPal });
   DISPLAY_SPOTS.forEach((d, i) => pushCar(items, 'd' + i, CARS[i].id, displayLooks[i], d[0], 0.225, d[1], d[2] + time * 0.12, 0.3, 0, 0, 0, 1, false));
 
@@ -579,14 +665,14 @@ function frame(now: number) {
 }
 
 // ---------- 시작
-buildStart(); buildPlaces(); buildChat(); applySettings(); refreshCarCard(); refreshStatus();
+buildStart(); buildPlaces(); buildChat(); setupRace(); applySettings(); refreshCarCard(); refreshStatus();
 $('btnCustom').onclick = openCustom; $('btnPhoto').onclick = () => { takePhoto = true; }; $('btnHornPc').onclick = doHorn;
-$('btnSet').onclick = openSettings; $('nav').onclick = () => setDest(null); $('chipAuth').onclick = openAuth;
+$('btnSet').onclick = openSettings; $('nav').onclick = () => { if (!racing()) setDest(null); }; $('chipAuth').onclick = openAuth;
 $('btnTime').onclick = () => { const o = ['auto', 'day', 'sunset', 'night']; settings.tod = o[(o.indexOf(settings.tod) + 1) % 4]; store.set('settings', settings); applySettings(); toast('시간대: ' + ['자동 순환', '낮', '노을', '밤'][o.indexOf(settings.tod)]); };
 document.querySelectorAll<HTMLButtonElement>('#mtoggles button').forEach(b => b.onclick = () => {
   const id = b.dataset.open!; const was = $(id).classList.contains('open');
   for (const k of ['places', 'carCard', 'chat']) $(k).classList.remove('open');
   if (!was) { $(id).classList.add('open'); if (id === 'chat') $('chatDot').classList.remove('on'); }
 });
-(window as any).__bdw = { me, net, cam, pad, setDest, get dest() { return dest; }, get time() { return time; }, teleport, PLACES, settings, start: () => $('btnStart').click() }; // 테스트/디버그용
+(window as any).__bdw = { me, net, cam, pad, setDest, get dest() { return dest; }, get joined() { return joined; }, get time() { return time; }, teleport, PLACES, settings, start: () => $('btnStart').click() }; // 테스트/디버그용
 requestAnimationFrame(frame);

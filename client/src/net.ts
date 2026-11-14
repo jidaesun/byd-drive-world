@@ -7,10 +7,12 @@ export interface Remote {
   tx: number; tz: number; th: number; spin: number; seen: boolean;
   bubble?: string; bubbleT?: number;
 }
+export interface RaceResult { id: number; name: string; model: string; ms: number | null; cp: number; }
+export interface RaceBest { name: string; model: string; ms: number; }
 export interface ChatMsg { id: number; name: string; ch: 'all' | 'near'; text: string; }
 type Handler = {
   join?: (r: Remote) => void; leave?: (r: Remote) => void; chat?: (m: ChatMsg) => void;
-  horn?: (r: Remote) => void; status?: () => void; look?: (r: Remote) => void; notice?: (t: string) => void;
+  horn?: (r: Remote) => void; race?: () => void; raceSlot?: (pos: [number, number, number]) => void; raceEnd?: (r: RaceResult[]) => void; cp?: (n: number) => void; status?: () => void; look?: (r: Remote) => void; notice?: (t: string) => void;
 };
 
 export class Net {
@@ -18,6 +20,16 @@ export class Net {
   id = 0; online = false; everOnline = false; full = false;
   players = new Map<number, Remote>();
   on: Handler = {};
+  // 레이스 상태 (서버 판정)
+  race = { phase: 'idle' as 'idle' | 'lobby' | 'countdown' | 'running', ids: new Set<number>(), until: 0, max: 6, t0: 0, prog: new Map<number, number>() };
+  cps: [number, number][] = []; best: RaceBest[] = [];
+  private setRace(m: any) {
+    const was = this.race.phase;
+    this.race.phase = m.phase; this.race.ids = new Set(m.ids); this.race.until = performance.now() + m.left; this.race.max = m.max;
+    if (m.phase === 'running' && was !== 'running') { this.race.t0 = performance.now(); this.race.prog.clear(); }
+    if (m.phase === 'idle') this.race.prog.clear();
+    this.on.race?.();
+  }
   private hello: any = null; private tries = 0; private timer = 0;
 
   url(): string | null {
@@ -38,7 +50,7 @@ export class Net {
     ws.onclose = () => {
       const was = this.online; this.online = false; this.ws = null;
       for (const r of this.players.values()) this.on.leave?.(r);
-      this.players.clear(); this.on.status?.();
+      this.players.clear(); this.race.phase = 'idle'; this.race.ids.clear(); this.on.race?.(); this.on.status?.();
       if (was) this.on.notice?.('서버 연결이 끊어졌어요. 다시 연결하는 중…');
       if (this.full) return;
       // 한 번도 연결된 적 없으면(정적 호스팅 등) 천천히 재시도
@@ -56,7 +68,14 @@ export class Net {
       case 'welcome':
         this.id = m.id; this.online = true; this.everOnline = true; this.players.clear();
         for (const p of m.players) { const r = this.mk(p); r.seen = true; this.players.set(r.id, r); this.on.join?.(r); }
+        this.cps = m.track?.cps ?? []; this.best = m.best ?? []; if (m.race) this.setRace(m.race);
         this.on.status?.(); break;
+      case 'race': this.setRace(m); break;
+      case 'race_slot': this.on.raceSlot?.(m.pos); break;
+      case 'cp': this.race.prog.set(this.id, m.n); this.on.cp?.(m.n); break;
+      case 'rp': this.race.t0 = performance.now() - m.el; for (const e of m.p) if (e[0] !== this.id || e[1] > (this.race.prog.get(this.id) ?? 0)) this.race.prog.set(e[0], e[1]); break;
+      case 'race_fin': this.on.notice?.(`🏁 ${m.rank}위 ${m.name} · ${(m.ms / 1000).toFixed(2)}초`); break;
+      case 'race_end': this.best = m.best ?? []; this.on.raceEnd?.(m.results); break;
       case 'join': { const r = this.mk(m.player); this.players.set(r.id, r); this.on.join?.(r); this.on.status?.(); this.on.notice?.(`${r.name} 님이 입장했어요`); break; }
       case 'leave': { const r = this.players.get(m.id); if (r) { this.players.delete(m.id); this.on.leave?.(r); this.on.status?.(); this.on.notice?.(`${r.name} 님이 나갔어요`); } break; }
       case 'snap':

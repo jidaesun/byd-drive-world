@@ -12,8 +12,10 @@ export const PLACES: Place[] = [
   { id: 'wash', name: '셀프 세차장', icon: '🫧', desc: '베이에 정차하면 세차를 시작할 수 있어요', x: -85, z: -20, r: 15, spawn: [-85, -6, Math.PI], ly: 8.5 },
   { id: 'cafe', name: '감성 카페', icon: '☕', desc: '테라스 앞 주차장에 세우고 쉬어가요', x: 72, z: 14, r: 16, spawn: [68, 2, 0], ly: 9 },
   { id: 'coast', name: '오션뷰 드라이브 코스', icon: '🌊', desc: '섬을 한 바퀴 도는 해안도로와 전망대', x: 0, z: 142, r: 17, spawn: [-14, 132, Math.PI / 2], ly: 7 },
+  { id: 'race', name: '서킷 출발선', icon: '🏎️', desc: '해안도로 한 바퀴 레이스 · 최대 6명', x: 14, z: 131, r: 14, spawn: [-2, 131.8, Math.PI / 2], ly: 9 },
   { id: 'tune', name: '튜닝샵', icon: '🔧', desc: '턴테이블 위에서 차량을 꾸며보세요', x: 9, z: -70, r: 7, spawn: [9, -70, -Math.PI / 2], ly: 9.5 },
 ];
+export const START_X = 24; // 레이스 출발선 (server/server.mjs 의 TRACK 과 같은 값)
 export const WASH_BAYS = [-91, -85, -79].map(x => ({ x, z0: -26, z1: -14 }));
 export const DISPLAY_SPOTS: [number, number, number][] = [[-17, -17, 0.8], [17, -17, -0.8], [-19, 15, 2.3], [19, 15, -2.3]];
 export const PIER = { x0: -3.2, x1: 3.2, z0: 140, z1: 193 };
@@ -212,10 +214,23 @@ export function buildWorld() {
   mb.c('#5b6472'); mb.cyl(214, 13.8, 0, 1.7, 1.7, 0.25, 16); mb.glow('#fff1b8'); mb.cyl(214, 14.05, 0, 1.0, 1.0, 1.5, 12);
   mb.c('#ff9fb2'); mb.cyl(214, 15.55, 0, 1.5, 0.05, 1.3, 12, false);
 
+  // ---------- 레이스 출발선: 체커 무늬 + 게이트
+  {
+    const zc = LOOP.b * Math.sqrt(1 - (START_X / LOOP.a) ** 2);
+    for (let i = 0; i < 9; i++) for (let j = 0; j < 2; j++) { mb.c((i + j) % 2 ? '#2b2f38' : '#ffffff'); mb.flat(START_X + j, zc - 4.5 + i, START_X + j + 1, zc - 3.5 + i, 0.055); }
+    for (const dz of [-5.6, 5.6]) { mb.c('#ffffff'); mb.cyl(START_X + 1, 0, zc + dz, 0.28, 0.24, 6.2, 10); mb.c('#ff9fb2'); mb.cyl(START_X + 1, 0, zc + dz, 0.45, 0.4, 0.5, 10); col.push({ x: START_X + 1, z: zc + dz, r: 0.4 }); }
+    mb.c('#2b2f38'); mb.box(START_X + 1, 5.4, zc, 0.5, 1.3, 11.6);
+    for (let i = 0; i < 10; i++) for (let j = 0; j < 2; j++) if ((i + j) % 2) { mb.c('#ffffff'); mb.box(START_X + 1, 5.45 + j * 0.6, zc - 5.2 + i * 1.155, 0.56, 0.6, 1.155); }
+    mb.glow('#fff1b8'); for (let i = 0; i < 5; i++) mb.blob(START_X + 0.7, 5.1, zc - 3.6 + i * 1.8, 0.22, 0.22, 0.22, 6, 4);
+    // 그리드 표시
+    for (let i = 0; i < 6; i++) { const x = START_X - 6 - Math.floor(i / 2) * 7, z = LOOP.b * Math.sqrt(1 - (x / LOOP.a) ** 2) + (i % 2 ? 2.2 : -2.2);
+      mb.c('#ffffff'); mb.flat(x + 2.5, z - 1.25, x + 2.7, z + 1.25, 0.055); mb.flat(x + 1.2, z - 1.25, x + 2.7, z - 1.1, 0.055); mb.flat(x + 1.2, z + 1.1, x + 2.7, z + 1.25, 0.055); }
+  }
+
   // ---------- 도로 가로등
   for (let i = 0; i < 28; i++) {
     const a = (i + 0.5) / 28 * Math.PI * 2, x = Math.cos(a) * (LOOP.a + 6.6), z = Math.sin(a) * (LOOP.b + 6.6);
-    if (Math.abs(x) < 9 || Math.abs(z) < 9) continue;
+    if (Math.abs(x) < 9 || Math.abs(z) < 9 || (z > 0 && Math.abs(x - START_X) < 8)) continue;
     lamp(mb, x, z, 4.6); col.push({ x, z, r: 0.28 });
   }
   for (const s of [-1, 1]) for (let d = 40; d < 100; d += 20) { lamp(mb, d * s, 6, 4.2); col.push({ x: d * s, z: 6, r: 0.28 }); lamp(mb, 6, d * s, 4.2); col.push({ x: 6, z: d * s, r: 0.28 }); }

@@ -42,6 +42,73 @@ function cleanLook(l) {
   l = l && typeof l === 'object' ? l : {};
   return { body: col(l.body, '#f4f4f0'), roof: col(l.roof, '#2b2f38'), twoTone: !!l.twoTone, rim: col(l.rim, '#e9edf2', RIM), wheel: int(l.wheel, 4, 0), decal: int(l.decal, 6, 0), decalCol: col(l.decalCol, '#2b2f38'), plate: int(l.plate, 5, 1) };
 }
+// ---------- 레이스: 해안도로 한 바퀴. 참가·출발·체크포인트·순위를 모두 서버가 판정한다
+const RACE_MAX = 6, RACE_LOBBY_MS = Number(process.env.RACE_LOBBY_MS) || 20000, RACE_COUNT_MS = 4000;
+const RACE_LIMIT_MS = 240000, RACE_AFTER_FIRST_MS = 30000, RACE_MIN_MS = Number(process.env.RACE_MIN_MS ?? 28000), CP_RADIUS = 16;
+const TRACK = (() => {
+  const a = 172, b = 132, x0 = 24, zc = x => b * Math.sqrt(1 - (x / a) ** 2); // client/src/world.ts 의 LOOP, START_X 와 같은 값
+  const th0 = Math.atan2(zc(x0) / b, x0 / a), cps = [];
+  for (let k = 1; k <= 8; k++) { const th = th0 - k * Math.PI / 4; cps.push([Math.round(a * Math.cos(th) * 10) / 10, Math.round(b * Math.sin(th) * 10) / 10]); }
+  const grid = []; // 출발선 뒤 2열 그리드
+  for (let i = 0; i < RACE_MAX; i++) { const x = x0 - 6 - Math.floor(i / 2) * 7; grid.push([x, Math.round((zc(x) + (i % 2 ? 2.2 : -2.2)) * 10) / 10, Math.PI / 2]); }
+  return { cps, grid };
+})();
+const race = { phase: 'idle', entrants: new Map(), t0: 0, deadline: 0, best: [] };
+const raceState = () => ({ t: 'race', phase: race.phase, ids: [...race.entrants.keys()], left: Math.max(0, race.deadline - Date.now()), max: RACE_MAX });
+function raceJoin(p) {
+  if (race.phase !== 'idle' && race.phase !== 'lobby') return;
+  if (race.entrants.has(p.id) || race.entrants.size >= RACE_MAX) return;
+  if (race.phase === 'idle') { race.phase = 'lobby'; race.deadline = Date.now() + RACE_LOBBY_MS; }
+  const used = new Set([...race.entrants.values()].map(e => e.slot)); let slot = 0; while (used.has(slot)) slot++;
+  race.entrants.set(p.id, { p, slot, cp: 0, done: false, ms: 0 });
+  if (race.entrants.size >= RACE_MAX) race.deadline = Math.min(race.deadline, Date.now() + 5000);
+  p.ws.send(JSON.stringify({ t: 'race_slot', slot, pos: TRACK.grid[slot] }));
+  broadcast(raceState());
+}
+function raceLeave(p) {
+  if (!race.entrants.delete(p.id)) return;
+  if (race.entrants.size === 0) { race.phase = 'idle'; race.deadline = 0; }
+  broadcast(raceState());
+}
+function raceProgress(p) {
+  const e = race.entrants.get(p.id); if (race.phase !== 'running' || !e || e.done) return;
+  const c = TRACK.cps[e.cp]; if (Math.hypot(p.s[0] - c[0], p.s[1] - c[1]) > CP_RADIUS) return;
+  e.cp++; p.ws.send(JSON.stringify({ t: 'cp', n: e.cp }));
+  if (e.cp < TRACK.cps.length) return;
+  const now = Date.now(); e.done = true; e.ms = now - race.t0;
+  if (e.ms < RACE_MIN_MS) { e.ms = 0; e.dq = true; } // 물리적으로 불가능한 기록은 실격
+  const rank = [...race.entrants.values()].filter(x => x.done && !x.dq).length;
+  if (!e.dq) { broadcast({ t: 'race_fin', id: p.id, name: p.name, ms: e.ms, rank }); race.deadline = Math.min(race.deadline, now + RACE_AFTER_FIRST_MS); }
+}
+function raceFinish() {
+  const fin = e => e.done && !e.dq;
+  const list = [...race.entrants.values()].sort((x, y) => (fin(x) ? 0 : 1) - (fin(y) ? 0 : 1) || (fin(x) ? x.ms - y.ms : y.cp - x.cp));
+  const results = list.map(e => ({ id: e.p.id, name: e.p.name, model: e.p.model, ms: e.done && !e.dq ? e.ms : null, cp: e.cp }));
+  for (const r of results) if (r.ms) { // 오늘의 기록: 닉네임별 최고 기록 상위 5개 (서버 재시작 시 초기화)
+    const old = race.best.find(b => b.name === r.name);
+    if (!old) race.best.push({ name: r.name, model: r.model, ms: r.ms }); else if (r.ms < old.ms) { old.ms = r.ms; old.model = r.model; }
+  }
+  race.best.sort((x, y) => x.ms - y.ms); race.best.length = Math.min(race.best.length, 5);
+  race.phase = 'idle'; race.entrants.clear(); race.deadline = 0;
+  broadcast({ t: 'race_end', results, best: race.best }); broadcast(raceState());
+}
+setInterval(() => {
+  const now = Date.now();
+  if (race.phase === 'lobby' && now >= race.deadline) {
+    race.phase = 'countdown'; race.deadline = now + RACE_COUNT_MS;
+    for (const e of race.entrants.values()) { e.cp = 0; e.done = false; e.ms = 0; }
+    broadcast(raceState());
+  } else if (race.phase === 'countdown' && now >= race.deadline) {
+    for (const e of [...race.entrants.values()]) { const g = TRACK.grid[e.slot]; if (Math.hypot(e.p.s[0] - g[0], e.p.s[1] - g[1]) > 25) race.entrants.delete(e.p.id); } // 그리드를 벗어난 참가자 제외
+    if (!race.entrants.size) { race.phase = 'idle'; race.deadline = 0; } else { race.phase = 'running'; race.t0 = now; race.deadline = now + RACE_LIMIT_MS; }
+    broadcast(raceState());
+  } else if (race.phase === 'running' && (now >= race.deadline || [...race.entrants.values()].every(e => e.done))) raceFinish();
+}, 100);
+setInterval(() => {
+  if (race.phase !== 'running') return;
+  broadcast({ t: 'rp', el: Date.now() - race.t0, p: [...race.entrants.values()].map(e => [e.p.id, e.cp, e.done ? 1 : 0]) });
+}, 500);
+
 const pub = p => ({ id: p.id, name: p.name, model: p.model, look: p.look, p: p.s });
 function broadcast(obj, except, filter) {
   const data = JSON.stringify(obj);
@@ -66,7 +133,7 @@ wss.on('connection', ws => {
       if (m.t !== 'hello') return;
       if (players.size >= MAX_PLAYERS) { ws.send(JSON.stringify({ t: 'full' })); return ws.close(); }
       me = { id: nextId++, ws, name: cleanName(m.name), model: MODELS.includes(m.model) ? m.model : 'atto3', look: cleanLook(m.look), s: [0, 15, Math.PI, 0, 0, 0, 0, 0], rl: {} };
-      ws.send(JSON.stringify({ t: 'welcome', id: me.id, players: [...players.values()].map(pub) }));
+      ws.send(JSON.stringify({ t: 'welcome', id: me.id, players: [...players.values()].map(pub), race: raceState(), track: { cps: TRACK.cps }, best: race.best }));
       players.set(me.id, me);
       broadcast({ t: 'join', player: pub(me) }, me);
       console.log(`[join] #${me.id} ${me.name} (${players.size}명 접속 중)`);
@@ -77,6 +144,7 @@ wss.on('connection', ws => {
         if (!Array.isArray(m.p) || !allow(me, 's', 40, 1000)) return;
         const a = m.p;
         me.s = [num(a[0], -400, 400), num(a[1], -400, 400), num(a[2], -1e4, 1e4), num(a[3], -60, 60), num(a[4], -1, 1), num(a[5], 0, 1), num(a[6], 0, 1), a[7] ? 1 : 0];
+        raceProgress(me);
         break;
       }
       case 'chat': {
@@ -93,13 +161,15 @@ wss.on('connection', ws => {
         me.look = cleanLook(m.look); // 차종은 입장 시 선택한 모델로 고정
         broadcast({ t: 'look', id: me.id, model: me.model, look: me.look }, me);
         break;
+      case 'race_join': if (allow(me, 'race', 6, 10000)) raceJoin(me); break;
+      case 'race_leave': raceLeave(me); break;
       case 'horn': if (allow(me, 'horn', 4, 4000)) broadcast({ t: 'horn', id: me.id }, me); break;
       case 'emote': if (allow(me, 'emote', 4, 6000)) broadcast({ t: 'emote', id: me.id, e: String(m.e ?? '').slice(0, 8) }, me); break;
     }
   });
   ws.on('close', () => {
     if (!me) return;
-    players.delete(me.id); broadcast({ t: 'leave', id: me.id });
+    players.delete(me.id); raceLeave(me); broadcast({ t: 'leave', id: me.id });
     console.log(`[leave] #${me.id} ${me.name} (${players.size}명 접속 중)`);
   });
   ws.on('error', () => {});
