@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#cfeeff">
+<title>BYD DRIVE WORLD — 비공식 오너 커뮤니티</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Ccircle cx=%2716%27 cy=%2716%27 r=%2714%27 fill=%27%23ff8fa3%27/%3E%3Ccircle cx=%2716%27 cy=%2716%27 r=%276%27 fill=%27%23fff%27/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="tags"></div>
+<div id="flash"></div>
+
+<div id="hud" class="hidden">
+  <header id="top">
+    <div class="logo"><i></i><span><b>BYD</b> DRIVE WORLD<small>비공식 오너 커뮤니티</small></span></div>
+    <div class="chips">
+      <span class="chip" id="chipName"></span>
+      <button class="chip warn" id="chipAuth" title="오너 인증 상태">미인증 · 데모</button>
+      <span class="chip" id="chipOnline"></span>
+      <button class="ib" id="btnTime" title="시간대">☀️</button>
+      <button class="ib" id="btnSet" title="설정">⚙️</button>
+    </div>
+  </header>
+  <div id="mtoggles">
+    <button class="ib" data-open="places" title="월드 이동">📍</button>
+    <button class="ib" data-open="carCard" title="내 차량">🚗</button>
+    <button class="ib" data-open="chat" title="채팅">💬<em id="chatDot"></em></button>
+  </div>
+  <nav id="places" class="panel"><h3>월드 이동</h3><div id="placeList"></div></nav>
+  <aside id="carCard" class="panel">
+    <h3>내 차량</h3>
+    <div class="carname"><i id="carDot"></i><div><b id="carModel"></b><small id="carKind"></small></div></div>
+    <div class="stat"><span>청결도</span><div class="bar"><i id="cleanBar"></i></div><b id="cleanPct"></b></div>
+    <div class="stat"><span>상태</span><b id="carState" class="wide"></b></div>
+    <div class="row"><button class="btn" id="btnCustom">🎨 꾸미기</button><button class="btn ghost" id="btnPhoto">📷 사진</button></div>
+  </aside>
+  <div id="banner"></div>
+  <div id="zone"></div>
+  <div id="speed"><b id="spd">0</b><span>km/h</span><button id="btnHornPc" title="경적 (H)">📯</button></div>
+  <section id="chat" class="panel">
+    <div class="chat-head"><button data-ch="all" class="on">전체</button><button data-ch="near">주변</button><span id="chatHint"></span></div>
+    <div id="chatLog"></div>
+    <form id="chatForm"><input id="chatIn" maxlength="200" placeholder="메시지 입력" autocomplete="off"><button class="btn sm">전송</button></form>
+  </section>
+  <div id="pad">
+    <div class="pl"><button data-k="left">◀</button><button data-k="right">▶</button></div>
+    <div class="pr"><button data-k="horn" class="horn">📯</button><button data-k="brake" class="brake">브레이크</button><button data-k="gas" class="gas">가속</button></div>
+  </div>
+</div>
+
+<div id="start">
+  <div class="start-card">
+    <div class="logo big"><i></i><span><b>BYD</b> DRIVE WORLD<small>BYD 오너를 위한 비공식 3D 드라이브 커뮤니티</small></span></div>
+    <label>닉네임<input id="nick" maxlength="12" placeholder="닉네임을 입력하세요" autocomplete="off"></label>
+    <div class="lbl">차량 선택</div>
+    <div id="modelPick" class="models"></div>
+    <div class="lbl">차체 색상</div>
+    <div id="colorPick" class="swatches"></div>
+    <button class="btn big" id="btnStart">드라이브 시작 →</button>
+    <p class="fine">BYD와 무관한 독립 팬 커뮤니티 데모입니다. 차량은 직접 제작한 캐주얼 스타일 모델입니다.</p>
+  </div>
+</div>
+
+<div id="sheet" class="hidden"><div class="sheet-card"><button class="ib close" id="sheetClose">✕</button><div id="sheetBody"></div></div></div>
+<div id="toasts"></div>
+<script src="app.js"></script>
+</body>
+</html>
