@@ -88,7 +88,7 @@ scripts/build.mjs              빌드
 
 실시간 서버는 지속 연결이 필요하므로 서버리스 함수가 아닌 상시 실행 환경에 올립니다.
 
-- **가장 간단한 방법**: Render / Railway / Fly.io 등에 이 저장소를 연결 → Build `npm install && npm run build`, Start `npm start`. 한 서비스가 페이지와 WebSocket을 함께 제공합니다.
+- **가장 간단한 방법 (Render 무료 플랜)**: render.com → New → Blueprint(또는 Web Service) → 이 저장소 선택. `render.yaml` 에 빌드·실행 명령과 정원(30명)이 들어 있습니다. 수동 입력 시 Build `npm install --include=dev && npm run build`, Start `npm start`. 한 서비스가 페이지와 WebSocket을 함께 제공합니다. 무료 플랜은 15분간 접속이 없으면 잠들고 다음 접속 때 1분쯤 걸려 깨어납니다.
 - **분리 배포**: `dist/` 를 Vercel 등 정적 호스팅에 올리고, 서버만 별도로 실행한 뒤 `https://내사이트/?server=wss://내서버/ws` 로 접속하거나 `index.html` 에 `window.BDW_SERVER = 'wss://…/ws'` 를 지정합니다.
 
 ## 다음 단계

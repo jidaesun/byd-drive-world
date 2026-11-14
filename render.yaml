@@ -1,0 +1,12 @@
+# Render Blueprint: 정적 페이지 + 실시간(WebSocket) 서버를 하나의 무료 웹 서비스로 실행
+services:
+  - type: web
+    name: byd-drive-world
+    runtime: node
+    plan: free
+    buildCommand: npm install --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: MAX_PLAYERS
+        value: "30"
