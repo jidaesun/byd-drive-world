@@ -89,7 +89,7 @@ wss.on('connection', ws => {
       }
       case 'look':
         if (!allow(me, 'look', 20, 10000)) return;
-        me.model = MODELS.includes(m.model) ? m.model : me.model; me.look = cleanLook(m.look);
+        me.look = cleanLook(m.look); // 차종은 입장 시 선택한 모델로 고정
         broadcast({ t: 'look', id: me.id, model: me.model, look: me.look }, me);
         break;
       case 'horn': if (allow(me, 'horn', 4, 4000)) broadcast({ t: 'horn', id: me.id }, me); break;

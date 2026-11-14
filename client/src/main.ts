@@ -3,6 +3,7 @@ import { Renderer, DrawItem, Env, Mesh } from './renderer';
 import { buildWorld, PLACES, Place, WASH_BAYS, DISPLAY_SPOTS, confine, onRoad, Collider } from './world';
 import { CARS, CarSpec, Look, carById, buildCar, palette, defaultLook, sanitizeLook, BODY_COLORS, RIM_COLORS, WHEEL_NAMES, DECAL_NAMES, PLATES } from './cars';
 import { Net, Remote } from './net';
+import { MB } from './geom';
 import { M4, V3, mul, trans, rotX, rotY, rotZ, lerp, clamp, angLerp, norm } from './math';
 
 // ---------- 유틸
@@ -109,7 +110,7 @@ function horn(vol = 1) {
 }
 
 // ---------- 입력
-const keys = new Set<string>(), pad = { left: false, right: false, gas: false, brake: false };
+const keys = new Set<string>(), pad = { left: false, right: false, gas: false, brake: false, stick: 0 };
 const typing = () => document.activeElement instanceof HTMLInputElement;
 addEventListener('keydown', e => {
   if (typing()) { if (e.key === 'Escape') (document.activeElement as HTMLElement).blur(); return; }
@@ -125,14 +126,31 @@ addEventListener('keydown', e => {
   if (e.code === 'Escape') closeSheet();
 });
 addEventListener('keyup', e => keys.delete(e.code));
-addEventListener('blur', () => { keys.clear(); pad.left = pad.right = pad.gas = pad.brake = false; });
+addEventListener('blur', () => { keys.clear(); pad.gas = pad.brake = false; pad.stick = 0; });
 document.querySelectorAll<HTMLButtonElement>('#pad button').forEach(b => {
-  const k = b.dataset.k as 'left' | 'right' | 'gas' | 'brake' | 'horn';
+  const k = b.dataset.k as 'gas' | 'brake' | 'horn';
   const set = (v: boolean) => { b.classList.toggle('dn', v); if (k === 'horn') { if (v) doHorn(); } else pad[k] = v; };
   b.addEventListener('pointerdown', e => { e.preventDefault(); b.setPointerCapture(e.pointerId); set(true); });
   for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) b.addEventListener(ev, () => set(false));
   b.addEventListener('contextmenu', e => e.preventDefault());
 });
+// 조향 조이스틱: 좌우로 기울인 만큼 아날로그 조향
+{
+  const st = $('stick'), knob = st.querySelector('i') as HTMLElement; let pid = -1;
+  const move = (e: PointerEvent) => {
+    const r = st.getBoundingClientRect(), R0 = r.width / 2 - 30;
+    let dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
+    const l = Math.hypot(dx, dy); if (l > R0) { dx *= R0 / l; dy *= R0 / l; }
+    knob.style.transform = `translate(${dx.toFixed(1)}px,${dy.toFixed(1)}px)`;
+    const v = clamp(dx / R0, -1, 1), a = Math.abs(v);
+    pad.stick = a < 0.1 ? 0 : -Math.sign(v) * Math.pow((a - 0.1) / 0.9, 1.3);
+  };
+  const end = (e: PointerEvent) => { if (e.pointerId !== pid) return; pid = -1; pad.stick = 0; knob.style.transform = ''; st.classList.remove('on'); };
+  st.addEventListener('pointerdown', e => { e.preventDefault(); if (pid !== -1) return; pid = e.pointerId; st.setPointerCapture(pid); st.classList.add('on'); move(e); });
+  st.addEventListener('pointermove', e => { if (e.pointerId === pid) move(e); });
+  for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) st.addEventListener(ev, e => end(e as PointerEvent));
+  st.addEventListener('contextmenu', e => e.preventDefault());
+}
 // 카메라 드래그 / 줌
 const cam = { h: Math.PI, yaw: 0, pitch: 0.3, dist: 9, lastDrag: -99, eye: [0, 5, 25] as V3, tgt: [0, 1, 15] as V3 };
 let drag: { id: number; x: number; y: number } | null = null;
@@ -149,7 +167,7 @@ canvas.addEventListener('wheel', e => { e.preventDefault(); cam.dist = clamp(cam
 function drive(dt: number) {
   const spec = carById(me.model);
   const up = keys.has('KeyW') || keys.has('ArrowUp') || pad.gas, dn = keys.has('KeyS') || keys.has('ArrowDown') || pad.brake;
-  const lf = keys.has('KeyA') || keys.has('ArrowLeft') || pad.left, rt = keys.has('KeyD') || keys.has('ArrowRight') || pad.right;
+  const lf = keys.has('KeyA') || keys.has('ArrowLeft'), rt = keys.has('KeyD') || keys.has('ArrowRight');
   const hb = keys.has('Space');
   const road = onRoad(me.x, me.z), vmax = road ? 30 : 17, v0 = me.v;
   me.brake = false;
@@ -163,8 +181,9 @@ function drive(dt: number) {
     if (me.v > vmax) me.v = lerp(me.v, vmax, Math.min(1, dt * 2));
   }
   const maxSteer = lerp(0.6, 0.11, clamp(Math.abs(me.v) / 26, 0, 1));
-  const target = (started && !washAnim ? (lf ? 1 : 0) - (rt ? 1 : 0) : 0) * maxSteer;
-  me.steer += (target - me.steer) * Math.min(1, dt * (target === 0 ? 7 : 4.5));
+  const sIn = lf || rt ? (lf ? 1 : 0) - (rt ? 1 : 0) : pad.stick;
+  const target = (started && !washAnim ? sIn : 0) * maxSteer;
+  me.steer += (target - me.steer) * Math.min(1, dt * (target === 0 ? 7 : pad.stick ? 8 : 4.5));
   const yawRate = me.v / spec.wb * Math.tan(me.steer);
   me.h += yawRate * dt;
   me.x += Math.sin(me.h) * me.v * dt; me.z += Math.cos(me.h) * me.v * dt;
@@ -334,23 +353,26 @@ function refreshStatus() {
 }
 // 시작 화면
 function buildStart() {
-  const mp = $('modelPick');
+  const mp = $('modelPick'), locked = store.get('locked', false);
   const draw = () => {
     mp.innerHTML = '';
-    for (const c of CARS) { const b = el('button', c.id === me.model ? 'on' : ''); b.append(el('b', '', c.name), el('small', '', c.kind)); b.onclick = () => { setModel(c.id); draw(); }; mp.append(b); }
+    for (const c of CARS) { const b = el('button', c.id === me.model ? 'on' : '') as HTMLButtonElement; b.append(el('b', '', c.name), el('small', '', c.kind));
+      if (locked) b.disabled = c.id !== me.model; else b.onclick = () => { setModel(c.id); draw(); };
+      mp.append(b); }
+    $('lockNote').textContent = locked ? '· 내 차량으로 고정됨' : '· 한 번 선택하면 바꿀 수 없어요';
     swatches($('colorPick'), BODY_COLORS, () => me.look.body, c => { me.look.body = c; lookChanged(); });
   };
   draw();
   const nick = $<HTMLInputElement>('nick'); nick.value = me.name;
   const go = () => {
     me.name = nick.value.replace(/[<>]/g, '').trim().slice(0, 12) || '드라이버' + Math.floor(100 + Math.random() * 900);
-    store.set('name', me.name); nick.blur();
+    store.set('name', me.name); store.set('model', me.model); store.set('locked', true); nick.blur();
     $('start').classList.add('hidden'); $('hud').classList.remove('hidden');
     $('chipName').textContent = '🙂 ' + me.name;
     const slot = Math.floor(Math.random() * 6); me.x = -7.5 + slot * 3; me.z = 14; me.h = Math.PI; cam.h = me.h; cam.yaw = 0;
     started = true; refreshCarCard(); refreshStatus();
     net.connect({ name: me.name, model: me.model, look: me.look });
-    toast('왼쪽 ◀▶ 로 조향, 오른쪽 버튼으로 가속·브레이크');
+    toast('왼쪽 조이스틱으로 조향, 오른쪽 버튼으로 가속·브레이크');
     sysMsg('BYD DRIVE WORLD에 오신 것을 환영해요. 세차장에서 차를 닦고, 튜닝샵에서 꾸며보세요.');
   };
   $('btnStart').onclick = go; nick.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
@@ -359,8 +381,36 @@ function buildStart() {
 function buildPlaces() {
   for (const p of PLACES) {
     const b = el('button'); b.dataset.id = p.id; b.append(el('span', '', p.icon), document.createTextNode(p.name));
-    b.onclick = () => { teleport(p); $('places').classList.remove('open'); }; $('placeList').append(b);
+    b.append(el('small'));
+    b.onclick = () => { setDest(dest === p ? null : p); $('places').classList.remove('open'); }; $('placeList').append(b);
   }
+}
+// 목적지 안내: 순간이동 대신 핀과 방향 화살표를 표시하고 직접 운전해서 찾아간다
+let dest: Place | null = null;
+const pinMesh = new Map<string, Mesh>(), pinPal = new Float32Array(24);
+pinPal.set([1, 0.42, 0.52], 18);
+function pinFor(p: Place) {
+  let m = pinMesh.get(p.id); if (m) return m;
+  const mb = new MB(), top = p.ly + 2.2; mb.m(6);
+  mb.cyl(0, 0.06, 0, 0.09, 0.09, top - 0.06, 6, false);
+  mb.cyl(0, top, 0, 0.05, 1.15, 2.2, 14, false); mb.blob(0, top + 2.6, 0, 1.25, 1.25, 1.25, 14, 8);
+  mb.disc(0, 0.09, 0, 3.0, 3.6, 28);
+  m = R.mesh(mb.build()); pinMesh.set(p.id, m); return m;
+}
+function setDest(p: Place | null) {
+  if (p && place === p) { toast(`이미 ${p.name}에 있어요`); p = null; }
+  dest = p;
+  document.querySelectorAll<HTMLElement>('#placeList button').forEach(b => { (b.lastChild as HTMLElement).textContent = b.dataset.id === dest?.id ? '안내 중' : ''; });
+  $('nav').classList.toggle('hidden', !dest); dropTag('dest');
+  if (dest) toast(`📍 ${dest.name}까지 핀을 따라 운전해 보세요`);
+}
+function updateNav() {
+  if (!dest) return;
+  const dx = dest.x - me.x, dz = dest.z - me.z, d = Math.hypot(dx, dz);
+  if (place === dest) { toast(`🎉 ${dest.name}에 도착했어요`); setDest(null); return; }
+  const rel = Math.atan2(dx, dz) - (cam.h + cam.yaw);
+  $('navArrow').style.transform = `rotate(${(-rel).toFixed(2)}rad)`;
+  $('navText').textContent = `${dest.icon} ${dest.name} · ${Math.round(Math.max(0, d - dest.r))}m`;
 }
 function teleport(p: Place) {
   if (washAnim) return;
@@ -409,8 +459,7 @@ $('sheetClose').onclick = closeSheet;
 function section(title: string) { sheetBody.append(el('div', 'lbl', title)); const d = el('div'); sheetBody.append(d); return d; }
 function openCustom() {
   sheetBody.innerHTML = ''; sheet.classList.remove('hidden');
-  sheetBody.append(el('h2', '', '🎨 차량 꾸미기'), el('p', '', '변경 사항은 바로 차량에 적용되고 차량별로 저장돼요.'));
-  const m = section('차량 모델'); m.className = 'pills'; pills(m, CARS.map(c => c.name), () => CARS.findIndex(c => c.id === me.model), i => { setModel(CARS[i].id); openCustom(); });
+  sheetBody.append(el('h2', '', '🎨 차량 꾸미기'), el('p', '', `내 차량: BYD ${carById(me.model).name} (차종은 변경할 수 없어요). 변경 사항은 바로 적용되고 저장돼요.`));
   const b = section('차체 색상'); b.className = 'swatches'; swatches(b, BODY_COLORS, () => me.look.body, c => { me.look.body = c; lookChanged(); });
   const t = section('투톤 루프'); t.className = 'pills'; pills(t, ['끄기', '켜기'], () => me.look.twoTone ? 1 : 0, i => { me.look.twoTone = !!i; lookChanged(); });
   const r = section('루프 색상'); r.className = 'swatches'; swatches(r, ['#f7f7f2', '#2b2f38', ...BODY_COLORS.slice(0, 7)], () => me.look.roof, c => { me.look.roof = c; me.look.twoTone = true; lookChanged(); pills(t, ['끄기', '켜기'], () => 1, i => { me.look.twoTone = !!i; lookChanged(); }); });
@@ -430,6 +479,7 @@ function openSettings() {
   const q = section('그래픽 품질'); q.className = 'pills'; pills(q, ['낮음', '보통', '높음'], () => settings.quality, i => { settings.quality = i; save(); });
   const s = section('소리'); s.className = 'pills'; pills(s, ['끄기', '켜기'], () => settings.sound ? 1 : 0, i => { settings.sound = !!i; save(); });
   const n = section('닉네임'); const b = el('button', 'btn ghost sm', '시작 화면에서 다시 설정'); b.onclick = () => location.reload(); n.append(b);
+  const u = section('차가 끼었을 때'); const ub = el('button', 'btn ghost sm', '🏁 오너 라운지로 복귀'); ub.onclick = () => { teleport(PLACES[0]); closeSheet(); }; u.append(ub);
   sheetBody.append(el('p', 'fine', 'BYD DRIVE WORLD는 BYD와 무관한 비공식 오너 커뮤니티 데모입니다.'));
 }
 function openAuth() {
@@ -481,7 +531,7 @@ function frame(now: number) {
   env = envAt(settings.tod === 'auto' ? todClock : TOD_FIX[settings.tod]);
 
   drive(dt); updateWash(dt); updateCamera(dt);
-  if (started) updateZone();
+  if (started) { updateZone(); updateNav(); }
 
   // 원격 플레이어 보간
   for (const o of net.players.values()) {
@@ -499,6 +549,7 @@ function frame(now: number) {
   const bounce = Math.sin(time * 9) * 0.004 * Math.min(1, Math.abs(me.v) / 6);
   pushCar(items, me, me.model, me.look, me.x, bounce, me.z, me.h, me.steer, me.spin, me.dirt, me.foam, me.gloss, me.brake, me.roll, me.pitch);
   for (const o of net.players.values()) pushCar(items, o, o.model, o.look, o.x, 0, o.z, o.h, o.st * 0.5, o.spin, o.dirt, o.foam, 0, o.brake);
+  if (dest) items.push({ mesh: pinFor(dest), m: mul(trans(dest.x, Math.sin(time * 2.2) * 0.25, dest.z), rotY(time * 0.8)), pal: pinPal });
   DISPLAY_SPOTS.forEach((d, i) => pushCar(items, 'd' + i, CARS[i].id, displayLooks[i], d[0], 0.225, d[1], d[2] + time * 0.12, 0.3, 0, 0, 0, 1, false));
 
   const pCount = updateParticles(dt);
@@ -509,7 +560,8 @@ function frame(now: number) {
   // 이름표
   if (started) tag('me', 'me', me.name, [me.x, carById(me.model).H + 0.55, me.z], 60, me.bubble);
   for (const o of net.players.values()) tag('p' + o.id, '', o.name, [o.x, carById(o.model).H + 0.55, o.z], 140, o.bubble || '');
-  for (const p of PLACES) tag('pl' + p.id, 'place', p.icon + ' ' + p.name, [p.x, p.ly, p.z], 230);
+  for (const p of PLACES) if (p !== dest) tag('pl' + p.id, 'place', p.icon + ' ' + p.name, [p.x, p.ly, p.z], 230); else dropTag('pl' + p.id);
+  if (dest) tag('dest', 'dest', `📍 ${dest.name}`, [dest.x, dest.ly + 7, dest.z], 2000);
   DISPLAY_SPOTS.forEach((d, i) => tag('d' + i, 'disp', '전시 · ' + CARS[i].name, [d[0], 2.6, d[1]], 26));
 
   // 네트워크 전송 15Hz
@@ -529,12 +581,12 @@ function frame(now: number) {
 // ---------- 시작
 buildStart(); buildPlaces(); buildChat(); applySettings(); refreshCarCard(); refreshStatus();
 $('btnCustom').onclick = openCustom; $('btnPhoto').onclick = () => { takePhoto = true; }; $('btnHornPc').onclick = doHorn;
-$('btnSet').onclick = openSettings; $('chipAuth').onclick = openAuth;
+$('btnSet').onclick = openSettings; $('nav').onclick = () => setDest(null); $('chipAuth').onclick = openAuth;
 $('btnTime').onclick = () => { const o = ['auto', 'day', 'sunset', 'night']; settings.tod = o[(o.indexOf(settings.tod) + 1) % 4]; store.set('settings', settings); applySettings(); toast('시간대: ' + ['자동 순환', '낮', '노을', '밤'][o.indexOf(settings.tod)]); };
 document.querySelectorAll<HTMLButtonElement>('#mtoggles button').forEach(b => b.onclick = () => {
   const id = b.dataset.open!; const was = $(id).classList.contains('open');
   for (const k of ['places', 'carCard', 'chat']) $(k).classList.remove('open');
   if (!was) { $(id).classList.add('open'); if (id === 'chat') $('chatDot').classList.remove('on'); }
 });
-(window as any).__bdw = { me, net, cam, get time() { return time; }, teleport, PLACES, settings, start: () => $('btnStart').click() }; // 테스트/디버그용
+(window as any).__bdw = { me, net, cam, pad, setDest, get dest() { return dest; }, get time() { return time; }, teleport, PLACES, settings, start: () => $('btnStart').click() }; // 테스트/디버그용
 requestAnimationFrame(frame);

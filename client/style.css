@@ -120,3 +120,21 @@ body.touch #pad{display:block}
   #banner{top:calc(12px + var(--sat));max-width:40vw}#toasts{top:calc(64px + var(--sat))}
   #zone{bottom:calc(74px + var(--sab))}
 }
+
+/* 조이스틱 */
+#stick{position:relative;width:148px;height:148px;border-radius:50%;background:rgba(255,255,255,.42);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.85);box-shadow:var(--sh);touch-action:none;display:flex;align-items:center;justify-content:space-between;padding:0 12px;color:rgba(59,65,96,.45);font-size:15px}
+#stick i{position:absolute;left:50%;top:50%;width:66px;height:66px;margin:-33px 0 0 -33px;border-radius:50%;background:linear-gradient(180deg,#fff,#f1f3fa);box-shadow:0 6px 14px rgba(60,70,110,.28),inset 0 -3px 0 rgba(59,65,96,.08);will-change:transform}
+#stick.on i{background:linear-gradient(180deg,#fff,#ffe3e9)}
+@media (orientation:landscape){#stick{width:128px;height:128px}#stick i{width:58px;height:58px;margin:-29px 0 0 -29px}}
+/* 목적지 안내 */
+#nav{position:fixed;top:calc(60px + var(--sat));left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:8px;background:linear-gradient(180deg,var(--coral),var(--coral2));color:#fff;border-radius:99px;padding:7px 10px 7px 8px;font-weight:800;font-size:13px;box-shadow:0 8px 18px rgba(255,122,146,.4);white-space:nowrap;max-width:calc(100vw - 120px)}
+#nav i{font-style:normal;width:26px;height:26px;border-radius:50%;background:#fff;color:var(--coral2);display:grid;place-items:center;font-size:13px;flex:none}
+#nav em{font-style:normal;opacity:.8;font-size:11px;padding:0 2px}
+#nav span{overflow:hidden;text-overflow:ellipsis}
+#banner{top:calc(106px + var(--sat))!important}
+.tag.dest b{background:var(--coral2);color:#fff;font-size:13px;padding:5px 12px;box-shadow:0 4px 12px rgba(255,122,146,.5)}
+#placeList button small{margin-left:auto;font-size:10.5px;color:#d7566f;font-weight:800}
+#lockNote{font-weight:600;color:#b9772a}
+.models button:disabled{opacity:.4}
+@media (orientation:landscape){#nav{top:calc(12px + var(--sat));left:auto;right:calc(150px + var(--sar));transform:none}#banner{top:calc(56px + var(--sat))!important}}
+#nav i b{display:block;width:14px;height:17px;background:var(--coral2);clip-path:polygon(50% 0,100% 100%,50% 74%,0 100%)}

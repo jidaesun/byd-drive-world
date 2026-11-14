@@ -25,11 +25,11 @@
     </div>
   </header>
   <div id="mtoggles">
-    <button class="ib" data-open="places" title="월드 이동">📍</button>
+    <button class="ib" data-open="places" title="목적지 안내">📍</button>
     <button class="ib" data-open="carCard" title="내 차량">🚗</button>
     <button class="ib" data-open="chat" title="채팅">💬<em id="chatDot"></em></button>
   </div>
-  <nav id="places" class="panel"><h3>월드 이동</h3><div id="placeList"></div></nav>
+  <nav id="places" class="panel"><h3>목적지 안내</h3><div id="placeList"></div></nav>
   <aside id="carCard" class="panel">
     <h3>내 차량</h3>
     <div class="carname"><i id="carDot"></i><div><b id="carModel"></b><small id="carKind"></small></div></div>
@@ -37,6 +37,7 @@
     <div class="stat"><span>상태</span><b id="carState" class="wide"></b></div>
     <div class="row"><button class="btn" id="btnCustom">🎨 꾸미기</button><button class="btn ghost" id="btnPhoto">📷 사진</button></div>
   </aside>
+  <button id="nav" class="hidden"><i><b id="navArrow"></b></i><span id="navText"></span><em>✕</em></button>
   <div id="banner"></div>
   <div id="zone"></div>
   <div id="speed"><b id="spd">0</b><span>km/h</span><button id="btnHornPc" title="경적 (H)">📯</button></div>
@@ -46,7 +47,7 @@
     <form id="chatForm"><input id="chatIn" maxlength="200" placeholder="메시지 입력" autocomplete="off"><button class="btn sm">전송</button></form>
   </section>
   <div id="pad">
-    <div class="pl"><button data-k="left">◀</button><button data-k="right">▶</button></div>
+    <div class="pl"><div id="stick"><span>◀</span><i></i><span>▶</span></div></div>
     <div class="pr"><button data-k="horn" class="horn">📯</button><button data-k="brake" class="brake">브레이크</button><button data-k="gas" class="gas">가속</button></div>
   </div>
 </div>
@@ -55,7 +56,7 @@
   <div class="start-card">
     <div class="logo big"><i></i><span><b>BYD</b> DRIVE WORLD<small>BYD 오너를 위한 비공식 3D 드라이브 커뮤니티</small></span></div>
     <label>닉네임<input id="nick" maxlength="12" placeholder="닉네임을 입력하세요" autocomplete="off"></label>
-    <div class="lbl">차량 선택</div>
+    <div class="lbl">차량 선택 <span id="lockNote"></span></div>
     <div id="modelPick" class="models"></div>
     <div class="lbl">차체 색상</div>
     <div id="colorPick" class="swatches"></div>
