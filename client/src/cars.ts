@@ -14,36 +14,38 @@ export interface Look {
 }
 
 export const CARS: CarSpec[] = [
-  { id: 'dolphin', name: 'DOLPHIN', kind: '해치백', L: 4.29, W: 1.77, H: 1.57, wb: 2.70, wr: 0.35, belt: .98, clad: 0.34, hl: 0.79, tl: 0.95, color: '#ffb9c9',
+  { id: 'dolphin', name: 'DOLPHIN', kind: '해치백', L: 4.29, W: 1.77, H: 1.57, wb: 2.70, wr: 0.35, belt: .98, clad: 0.34, hl: 0.79, tl: 0.95, color: '#f4f4f0',
     body: [[-.5, .74, .48, .88], [-.485, .93, .34, 1.0], [-.43, 1, .26, 1.03], [-.15, 1, .23, 1.02], [.15, 1, .23, 1.0], [.33, 1, .25, .96], [.43, .96, .27, .88], [.485, .88, .33, .80], [.5, .70, .42, .70]],
     cabin: [[-.47, .80, .9, .97], [-.425, .86, .9, 1.50], [-.25, .88, .9, 1.56], [0, .88, .9, 1.57], [.14, .86, .9, 1.50], [.31, .80, .9, .97]] },
-  { id: 'atto3', name: 'ATTO 3', kind: '컴팩트 SUV', L: 4.455, W: 1.875, H: 1.615, wb: 2.72, wr: 0.37, belt: 1.0, clad: 0.5, hl: 0.80, tl: 0.93, color: '#8ec5e8',
+  { id: 'atto3', name: 'ATTO 3', kind: '컴팩트 SUV', L: 4.455, W: 1.875, H: 1.615, wb: 2.72, wr: 0.37, belt: 1.0, clad: 0.5, hl: 0.80, tl: 0.93, color: '#9aa0a8',
     body: [[-.5, .72, .50, .86], [-.485, .92, .36, .99], [-.42, 1, .27, 1.04], [-.15, 1, .24, 1.03], [.12, 1, .24, 1.01], [.30, 1, .26, .98], [.41, .97, .28, .91], [.48, .88, .34, .82], [.5, .68, .44, .72]],
     cabin: [[-.455, .80, .9, .98], [-.40, .86, .9, 1.52], [-.22, .88, .9, 1.60], [0, .88, .9, 1.615], [.10, .86, .9, 1.57], [.27, .80, .9, .99]] },
-  { id: 'seal', name: 'SEAL', kind: '스포츠 세단', L: 4.80, W: 1.875, H: 1.46, wb: 2.92, wr: 0.36, belt: .92, clad: 0.3, hl: 0.68, tl: 0.85, color: '#9fe0d2',
+  { id: 'seal', name: 'SEAL', kind: '스포츠 세단', L: 4.80, W: 1.875, H: 1.46, wb: 2.92, wr: 0.36, belt: .92, clad: 0.3, hl: 0.68, tl: 0.85, color: '#2b2f38',
     body: [[-.5, .70, .46, .80], [-.485, .90, .34, .90], [-.42, 1, .25, .93], [-.15, 1, .22, .93], [.12, 1, .22, .92], [.28, 1, .23, .86], [.40, .96, .25, .76], [.48, .86, .30, .68], [.5, .66, .40, .60]],
     cabin: [[-.40, .78, .82, .90], [-.27, .84, .82, 1.30], [-.10, .86, .82, 1.44], [.02, .86, .82, 1.46], [.10, .84, .82, 1.40], [.24, .78, .82, .90]] },
-  { id: 'sealion7', name: 'SEALION 7', kind: '쿠페형 SUV', L: 4.83, W: 1.925, H: 1.62, wb: 2.93, wr: 0.39, belt: 1.03, clad: 0.5, hl: 0.83, tl: 1.0, color: '#cdc4f5',
+  { id: 'sealion7', name: 'SEALION 7', kind: '쿠페형 SUV', L: 4.83, W: 1.925, H: 1.62, wb: 2.93, wr: 0.39, belt: 1.03, clad: 0.5, hl: 0.83, tl: 1.0, color: '#f4f4f0',
     body: [[-.5, .72, .52, .92], [-.485, .92, .38, 1.03], [-.42, 1, .28, 1.07], [-.15, 1, .25, 1.06], [.12, 1, .25, 1.04], [.29, 1, .27, 1.0], [.41, .97, .29, .92], [.48, .88, .35, .82], [.5, .68, .45, .72]],
     cabin: [[-.44, .78, .93, 1.05], [-.30, .84, .93, 1.42], [-.12, .87, .93, 1.60], [.02, .87, .93, 1.62], [.11, .85, .93, 1.56], [.27, .79, .93, 1.0]] },
 ];
 export const carById = (id: string) => CARS.find(c => c.id === id) ?? CARS[0];
 
-export const BODY_COLORS = ['#8ec5e8', '#9fe0d2', '#ffb9c9', '#cdc4f5', '#ffe08a', '#ffc49a', '#b8e6a3', '#f7f7f2', '#c9ced6', '#5b6472', '#2b2f38', '#e8636b', '#3f7fd9', '#1f9e8a'];
-export const RIM_COLORS = ['#e9edf2', '#b9c0cc', '#3a3f4a', '#f4d58d', '#ffb9c9', '#9fe0d2'];
+export const BODY_COLORS = ['#f4f4f0', '#9aa0a8', '#2b2f38']; // 화이트, 그레이, 블랙
+export const RIM_COLORS = ['#e9edf2', '#8d939c', '#3a3f4a'];
+export const TRIM_COLORS = ['#f4f4f0', '#9aa0a8', '#2b2f38']; // 루프·데칼용
 export const WHEEL_NAMES = ['5-스포크', '에어로 디스크', '멀티 스포크', '플라워'];
 export const DECAL_NAMES = ['없음', '트윈 스트라이프', '사이드 라인', '웨이브 투톤', '도트', '센터 스트라이프'];
 export const PLATES = [{ name: '화이트', c: '#f6f6f1' }, { name: 'EV 블루', c: '#8fd0f5' }, { name: '파스텔 핑크', c: '#ffc7d6' }, { name: '민트', c: '#b5ecd8' }, { name: '블랙', c: '#2a2d36' }];
 
 export function defaultLook(spec: CarSpec): Look {
-  return { body: spec.color, roof: '#f7f7f2', twoTone: false, rim: '#e9edf2', wheel: 0, decal: 0, decalCol: '#f7f7f2', plate: 1 };
+  return { body: spec.color, roof: '#2b2f38', twoTone: false, rim: '#e9edf2', wheel: 0, decal: 0, decalCol: spec.color === '#2b2f38' ? '#f4f4f0' : '#2b2f38', plate: 1 };
 }
 const HEXRE = /^#[0-9a-fA-F]{6}$/;
 export function sanitizeLook(l: any, spec: CarSpec): Look {
   const d = defaultLook(spec); if (!l || typeof l !== 'object') return d;
-  const col = (v: any, f: string) => typeof v === 'string' && HEXRE.test(v) ? v : f;
+  // 허용된 색상만 통과 (이전 버전에서 저장된 다른 색은 기본값으로 되돌림)
+  const col = (v: any, f: string, ok: string[] = TRIM_COLORS) => typeof v === 'string' && HEXRE.test(v) && ok.includes(v.toLowerCase()) ? v.toLowerCase() : f;
   const int = (v: any, n: number, f: number) => Number.isInteger(v) && v >= 0 && v < n ? v : f;
-  return { body: col(l.body, d.body), roof: col(l.roof, d.roof), twoTone: !!l.twoTone, rim: col(l.rim, d.rim), wheel: int(l.wheel, WHEEL_NAMES.length, 0),
+  return { body: col(l.body, d.body, BODY_COLORS), roof: col(l.roof, d.roof), twoTone: !!l.twoTone, rim: col(l.rim, d.rim, RIM_COLORS), wheel: int(l.wheel, WHEEL_NAMES.length, 0),
     decal: int(l.decal, DECAL_NAMES.length, 0), decalCol: col(l.decalCol, d.decalCol), plate: int(l.plate, PLATES.length, 1) };
 }
 

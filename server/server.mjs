@@ -31,7 +31,8 @@ const players = new Map();
 let nextId = 1;
 
 const num = (v, lo, hi, d = 0) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d);
-const col = (v, d) => (typeof v === 'string' && HEX.test(v) ? v : d);
+const BODY = ['#f4f4f0', '#9aa0a8', '#2b2f38'], RIM = ['#e9edf2', '#8d939c', '#3a3f4a']; // 화이트·그레이·블랙만 허용
+const col = (v, d, ok = BODY) => (typeof v === 'string' && HEX.test(v) && ok.includes(v.toLowerCase()) ? v.toLowerCase() : d);
 const int = (v, n, d) => (Number.isInteger(v) && v >= 0 && v < n ? v : d);
 function cleanName(s) {
   s = String(s ?? '').replace(/[\u0000-\u001f\u007f<>]/g, '').trim().slice(0, 12);
@@ -39,7 +40,7 @@ function cleanName(s) {
 }
 function cleanLook(l) {
   l = l && typeof l === 'object' ? l : {};
-  return { body: col(l.body, '#8ec5e8'), roof: col(l.roof, '#f7f7f2'), twoTone: !!l.twoTone, rim: col(l.rim, '#e9edf2'), wheel: int(l.wheel, 4, 0), decal: int(l.decal, 6, 0), decalCol: col(l.decalCol, '#f7f7f2'), plate: int(l.plate, 5, 1) };
+  return { body: col(l.body, '#f4f4f0'), roof: col(l.roof, '#2b2f38'), twoTone: !!l.twoTone, rim: col(l.rim, '#e9edf2', RIM), wheel: int(l.wheel, 4, 0), decal: int(l.decal, 6, 0), decalCol: col(l.decalCol, '#2b2f38'), plate: int(l.plate, 5, 1) };
 }
 const pub = p => ({ id: p.id, name: p.name, model: p.model, look: p.look, p: p.s });
 function broadcast(obj, except, filter) {

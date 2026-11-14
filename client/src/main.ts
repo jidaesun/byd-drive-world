@@ -1,7 +1,7 @@
 // BYD DRIVE WORLD — 클라이언트 진입점: 게임 루프, 운전 물리, 카메라, UI, 세차, 멀티플레이 연동
 import { Renderer, DrawItem, Env, Mesh } from './renderer';
 import { buildWorld, PLACES, Place, WASH_BAYS, DISPLAY_SPOTS, confine, onRoad, Collider } from './world';
-import { CARS, CarSpec, Look, carById, buildCar, palette, defaultLook, sanitizeLook, BODY_COLORS, RIM_COLORS, WHEEL_NAMES, DECAL_NAMES, PLATES } from './cars';
+import { CARS, CarSpec, Look, carById, buildCar, palette, defaultLook, sanitizeLook, BODY_COLORS, RIM_COLORS, TRIM_COLORS, WHEEL_NAMES, DECAL_NAMES, PLATES } from './cars';
 import { Net, Remote } from './net';
 import { MB } from './geom';
 import { M4, V3, mul, trans, rotX, rotY, rotZ, lerp, clamp, angLerp, norm } from './math';
@@ -302,7 +302,7 @@ function pushCar(items: DrawItem[], key: unknown, model: string, look: Look, x: 
     items.push({ mesh: wm, m: mul(m, rotX(spin)), pal: v.pal });
   }
 }
-const displayLooks: Look[] = CARS.map((c, i) => ({ ...defaultLook(c), twoTone: i % 2 === 0, decal: [0, 1, 4, 2][i], decalCol: '#ffffff', wheel: i, rim: RIM_COLORS[[0, 2, 4, 3][i]] }));
+const displayLooks: Look[] = CARS.map((c, i) => ({ ...defaultLook(c), twoTone: i % 2 === 0, decal: [0, 1, 0, 2][i], wheel: i, rim: RIM_COLORS[[0, 2, 0, 1][i]] }));
 
 // ---------- 이름표 / 장소 라벨
 const tagsEl = $('tags'), tags = new Map<string, HTMLElement>();
@@ -462,11 +462,11 @@ function openCustom() {
   sheetBody.append(el('h2', '', '🎨 차량 꾸미기'), el('p', '', `내 차량: BYD ${carById(me.model).name} (차종은 변경할 수 없어요). 변경 사항은 바로 적용되고 저장돼요.`));
   const b = section('차체 색상'); b.className = 'swatches'; swatches(b, BODY_COLORS, () => me.look.body, c => { me.look.body = c; lookChanged(); });
   const t = section('투톤 루프'); t.className = 'pills'; pills(t, ['끄기', '켜기'], () => me.look.twoTone ? 1 : 0, i => { me.look.twoTone = !!i; lookChanged(); });
-  const r = section('루프 색상'); r.className = 'swatches'; swatches(r, ['#f7f7f2', '#2b2f38', ...BODY_COLORS.slice(0, 7)], () => me.look.roof, c => { me.look.roof = c; me.look.twoTone = true; lookChanged(); pills(t, ['끄기', '켜기'], () => 1, i => { me.look.twoTone = !!i; lookChanged(); }); });
+  const r = section('루프 색상'); r.className = 'swatches'; swatches(r, TRIM_COLORS, () => me.look.roof, c => { me.look.roof = c; me.look.twoTone = true; lookChanged(); pills(t, ['끄기', '켜기'], () => 1, i => { me.look.twoTone = !!i; lookChanged(); }); });
   const w = section('휠 디자인'); w.className = 'pills'; pills(w, WHEEL_NAMES, () => me.look.wheel, i => { me.look.wheel = i; lookChanged(); });
   const wc = section('휠 색상'); wc.className = 'swatches'; swatches(wc, RIM_COLORS, () => me.look.rim, c => { me.look.rim = c; lookChanged(); });
   const d = section('데칼'); d.className = 'pills'; pills(d, DECAL_NAMES, () => me.look.decal, i => { me.look.decal = i; lookChanged(); });
-  const dc = section('데칼 색상'); dc.className = 'swatches'; swatches(dc, ['#f7f7f2', '#2b2f38', '#ff8fa3', '#ffe08a', '#6fd3bd', '#3f7fd9', '#e8636b'], () => me.look.decalCol, c => { me.look.decalCol = c; lookChanged(); });
+  const dc = section('데칼 색상'); dc.className = 'swatches'; swatches(dc, TRIM_COLORS, () => me.look.decalCol, c => { me.look.decalCol = c; lookChanged(); });
   const p = section('번호판'); p.className = 'pills'; pills(p, PLATES.map(x => x.name), () => me.look.plate, i => { me.look.plate = i; lookChanged(); });
   cam.yaw = 2.5; cam.lastDrag = time + 6;
 }
