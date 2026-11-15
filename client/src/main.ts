@@ -360,7 +360,7 @@ function pushCar(items: DrawItem[], key: unknown, model: string, look: Look, x: 
   const spec = carById(model), ms = carMesh[spec.id];
   let v = views.get(key); if (!v) { v = { pal: new Float32Array(24), fx: new Float32Array(4), dc: new Float32Array(4) }; views.set(key, v); }
   palette(look, brake, env.night, v.pal);
-  v.fx[0] = dirt; v.fx[1] = foam; v.fx[2] = gloss; v.fx[3] = look.decal; v.dc[0] = spec.belt;
+  v.fx[0] = dirt; v.fx[1] = foam; v.fx[2] = gloss; v.fx[3] = look.decal; v.dc[0] = spec.belt; v.dc[1] = spec.doors[0] * spec.L; v.dc[2] = spec.doors[1] * spec.L; v.dc[3] = spec.doors[2] * spec.L;
   const base = mul(trans(x, y, z), rotY(h));
   const body = roll || pitch ? mul(mul(base, trans(0, 0.3, 0)), mul(mul(rotX(pitch), rotZ(roll)), trans(0, -0.3, 0))) : base;
   items.push({ mesh: ms.body, m: body, pal: v.pal, fx: v.fx, dc: v.dc });
@@ -371,6 +371,8 @@ function pushCar(items: DrawItem[], key: unknown, model: string, look: Look, x: 
     items.push({ mesh: wm, m: mul(m, rotX(spin)), pal: v.pal });
   }
 }
+let lineup: [number, number, number] | null = null;
+const lineupLooks: Look[] = CARS.map((c, i) => ({ ...defaultLook(c), body: BODY_COLORS[[0, 1, 1, 0][i]] }));
 const displayLooks: Look[] = CARS.map((c, i) => ({ ...defaultLook(c), twoTone: i % 2 === 0, decal: [0, 1, 0, 2][i], wheel: i, rim: RIM_COLORS[[0, 2, 0, 1][i]] }));
 
 // ---------- 이름표 / 장소 라벨
@@ -636,6 +638,7 @@ function frame(now: number) {
   for (const o of net.players.values()) pushCar(items, o, o.model, o.look, o.x, 0, o.z, o.h, o.st * 0.5, o.spin, o.dirt, o.foam, 0, o.brake);
   if (racing()) { const g = net.cps[net.race.prog.get(net.id) ?? 0]; if (g) items.push({ mesh: gate(), m: mul(trans(g[0], 0, g[1]), rotY(time * 0.5)), pal: gatePal }); }
   if (dest) items.push({ mesh: pinFor(dest), m: mul(trans(dest.x, Math.sin(time * 2.2) * 0.25, dest.z), rotY(time * 0.8)), pal: pinPal });
+  if (lineup) { const lu = lineup; CARS.forEach((c, i) => pushCar(items, 'l' + i, c.id, lineupLooks[i], lu[0] + i * 3.6, 0, lu[1], lu[2], 0.25, 0, 0, 0, 0.6, false)); } // 4종 비교용 (개발)
   DISPLAY_SPOTS.forEach((d, i) => pushCar(items, 'd' + i, CARS[i].id, displayLooks[i], d[0], 0.225, d[1], d[2] + time * 0.12, 0.3, 0, 0, 0, 1, false));
 
   const pCount = updateParticles(dt);
@@ -674,5 +677,5 @@ document.querySelectorAll<HTMLButtonElement>('#mtoggles button').forEach(b => b.
   for (const k of ['places', 'carCard', 'chat']) $(k).classList.remove('open');
   if (!was) { $(id).classList.add('open'); if (id === 'chat') $('chatDot').classList.remove('on'); }
 });
-(window as any).__bdw = { me, net, cam, pad, setDest, get dest() { return dest; }, get joined() { return joined; }, get time() { return time; }, teleport, PLACES, settings, start: () => $('btnStart').click() }; // 테스트/디버그용
+(window as any).__bdw = { me, net, cam, lineup: (x: number, z: number, h: number) => { lineup = [x, z, h]; }, pad, setDest, get dest() { return dest; }, get joined() { return joined; }, get time() { return time; }, teleport, PLACES, settings, start: () => $('btnStart').click() }; // 테스트/디버그용
 requestAnimationFrame(frame);

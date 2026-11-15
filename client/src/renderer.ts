@@ -60,6 +60,11 @@ void main(){
       if(dt==3 && abs(N.x)>.3 && vL.y < uDc.x-.3+.09*sin(vL.z*3.2)) base = uPal[3];
       if(dt==4 && abs(N.x)>.45 && length(fract(vec2(vL.z,vL.y)*2.4)-.5)<.2) base = uPal[3];
       if(dt==5 && N.y>.3 && abs(vL.x)<.24) base = uPal[3];
+      // 도어 분할선과 로커 라인 (uDc: 벨트 높이, 분할선 z 3개)
+      if(uDc.x>0. && abs(N.x)>.55 && vL.y>.34 && vL.y<uDc.x-.03){
+        float dl = min(min(abs(vL.z-uDc.y),abs(vL.z-uDc.z)),abs(vL.z-uDc.w));
+        if(dl<.012 || abs(vL.y-.44)<.008) base *= .6;
+      }
     }
     if(m==1){ spec = .32+uFx.z*.6; if(dt==1 && N.y>.3 && abs(abs(vL.x)-.17)<.075) base = uPal[3]; if(dt==5 && N.y>.3 && abs(vL.x)<.24) base = uPal[3]; }
     if(m==2){ spec = .5; shin = 30.; }
