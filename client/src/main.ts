@@ -6,6 +6,7 @@ import { Net, Remote, RaceResult } from './net';
 import { MB } from './geom';
 import { M4, V3, mul, trans, rotX, rotY, rotZ, lerp, clamp, angLerp, norm } from './math';
 
+declare const __BUILD__: string;
 // ---------- 유틸
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const el = (tag: string, cls = '', text = '') => { const e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; };
@@ -624,7 +625,7 @@ function openSettings() {
   const s = section('소리'); s.className = 'pills'; pills(s, ['끄기', '켜기'], () => settings.sound ? 1 : 0, i => { settings.sound = !!i; save(); });
   const n = section('닉네임'); const b = el('button', 'btn ghost sm', '시작 화면에서 다시 설정'); b.onclick = () => location.reload(); n.append(b);
   const u = section('차가 끼었을 때'); const ub = el('button', 'btn ghost sm', '🏁 오너 라운지로 복귀'); ub.onclick = () => { teleport(PLACES[0]); closeSheet(); }; u.append(ub);
-  sheetBody.append(el('p', 'fine', 'BYD DRIVE WORLD는 BYD와 무관한 비공식 오너 커뮤니티 데모입니다.'));
+  sheetBody.append(el('p', 'fine', 'BYD DRIVE WORLD는 BYD와 무관한 비공식 오너 커뮤니티 데모입니다.'), el('p', 'fine', '버전 ' + __BUILD__));
 }
 function openAuth() {
   sheetBody.innerHTML = ''; sheet.classList.remove('hidden');
@@ -726,6 +727,7 @@ function frame(now: number) {
 }
 
 // ---------- 시작
+document.querySelector('.start-card .fine')!.append(document.createElement('br'), '버전 ' + __BUILD__);
 buildStart(); buildPlaces(); buildChat(); setupRace(); setupArena(); applySettings(); refreshCarCard(); refreshStatus();
 $('btnCustom').onclick = openCustom; $('btnPhoto').onclick = () => { takePhoto = true; }; $('btnHornPc').onclick = doHorn;
 $('btnSet').onclick = openSettings; $('nav').onclick = () => { if (!racing()) setDest(null); }; $('chipAuth').onclick = openAuth;

@@ -15,7 +15,8 @@ const HEX = /^#[0-9a-fA-F]{6}$/;
 
 const server = http.createServer(async (req, res) => {
   const path = decodeURIComponent((req.url || '/').split('?')[0]);
-  if (path === '/healthz') { res.writeHead(200, { 'content-type': 'application/json' }); return res.end(JSON.stringify({ ok: true, players: players.size })); }
+  if (path === '/healthz') { res.writeHead(200, { 'content-type': 'application/json' }); let version = ''; try { version = (await readFile(join(DIST, 'version.txt'), 'utf8')).trim(); } catch { /* 빌드 전 */ }
+    return res.end(JSON.stringify({ ok: true, players: players.size, version })); }
   const rel = normalize(path === '/' ? '/index.html' : path);
   if (rel.includes('..')) { res.writeHead(400); return res.end(); }
   try {
