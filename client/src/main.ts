@@ -1,6 +1,6 @@
 // BYD DRIVE WORLD — 클라이언트 진입점: 게임 루프, 운전 물리, 카메라, UI, 세차, 멀티플레이 연동
 import { Renderer, DrawItem, Env, Mesh } from './renderer';
-import { buildWorld, PLACES, Place, WASH_BAYS, DISPLAY_SPOTS, confine, onRoad, Collider } from './world';
+import { buildWorld, PLACES, Place, WASH_BAYS, DISPLAY_SPOTS, ARENA, confine, onRoad, Collider } from './world';
 import { CARS, CarSpec, Look, carById, buildCar, palette, defaultLook, sanitizeLook, BODY_COLORS, RIM_COLORS, TRIM_COLORS, WHEEL_NAMES, DECAL_NAMES, PLATES } from './cars';
 import { Net, Remote, RaceResult } from './net';
 import { MB } from './geom';
@@ -330,6 +330,54 @@ function bestList() {
 }
 function openBest() { sheetBody.innerHTML = ''; sheet.classList.remove('hidden'); sheetBody.append(el('h2', '', '🏎️ 서킷 기록')); bestList(); }
 
+// ---------- 서바이벌 (종합운동장): 발사 요청만 보내고, 명중·HP·처치는 서버 판정을 표시한다
+interface Bullet { id: number; x: number; z: number; dx: number; dz: number; t: number; c: V3; }
+const bullets: Bullet[] = [], SHOT = { speed: 46, life: 1.0, cd: 0.3 };
+const PAINT: V3[] = [[1, .48, .57], [.44, .83, .74], [1, .78, .36], [.72, .64, .96], [.45, .72, .95], [1, .6, .4]];
+let fireHeld = false, lastFire = -9;
+const inArenaNow = () => started && net.online && Math.hypot(me.x - ARENA.x, me.z - ARENA.z) < ARENA.r;
+function setupArena() {
+  const fb = $('fire');
+  fb.addEventListener('pointerdown', e => { e.preventDefault(); fb.setPointerCapture(e.pointerId); fireHeld = true; fb.classList.add('dn'); });
+  for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) fb.addEventListener(ev, () => { fireHeld = false; fb.classList.remove('dn'); });
+  fb.addEventListener('contextmenu', e => e.preventDefault());
+  net.on.shot = m => { bullets.push({ id: m.b, x: m.x, z: m.z, dx: Math.sin(m.h), dz: Math.cos(m.h), t: 0, c: PAINT[m.id % PAINT.length] }); };
+  net.on.hit = m => {
+    const i = bullets.findIndex(b => b.id === m.b), b = i >= 0 ? bullets.splice(i, 1)[0] : null;
+    const v = m.id === net.id ? me : net.players.get(m.id); if (!v) return;
+    const c = b ? b.c : PAINT[m.by % PAINT.length];
+    for (let k = 0; k < 16; k++) { const a = Math.random() * 6.28, sp = rnd(1.5, 5); spawn(v.x + rnd(-.6, .6), rnd(.7, 1.4), v.z + rnd(-.6, .6), Math.cos(a) * sp, rnd(1, 4.5), Math.sin(a) * sp, rnd(.35, .7), rnd(.16, .34), c, 1, 9); }
+    if (m.id === net.id) { me.dirt = Math.min(1, me.dirt + 0.05); const h = $('hurt'); h.classList.add('on'); requestAnimationFrame(() => requestAnimationFrame(() => h.classList.remove('on'))); zoneKey = ''; }
+  };
+  net.on.ko = m => {
+    sysMsg(`🎯 ${m.byName || '누군가'} 님이 ${m.name} 님을 처치했어요`);
+    const v = m.id === net.id ? me : net.players.get(m.id);
+    if (v) for (let k = 0; k < 60; k++) { const a = Math.random() * 6.28, sp = rnd(2, 8); spawn(v.x, 1, v.z, Math.cos(a) * sp, rnd(3, 9), Math.sin(a) * sp, rnd(.6, 1.2), rnd(.2, .45), PAINT[k % PAINT.length], 1, 9); }
+    if (m.id === net.id) { placeAt(ARENA.exit[0], ARENA.exit[1], ARENA.exit[2]); toast(`💥 ${m.byName || '상대'} 님에게 당했어요. 다시 입장할 수 있어요`); }
+    else if (m.by === net.id) toast(`🎯 ${m.name} 님 처치!`);
+  };
+  net.on.arena = () => { zoneKey = ''; };
+}
+function updateArena(dt: number) {
+  const inA = inArenaNow();
+  $('fire').classList.toggle('hidden', !inA); $('zone').classList.toggle('arena', place?.id === 'arena');
+  if (inA && (fireHeld || keys.has('KeyF')) && time - lastFire > SHOT.cd && !typing()) { lastFire = time; net.send({ t: 'fire' }); }
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    const b = bullets[i]; b.t += dt; b.x += b.dx * SHOT.speed * dt; b.z += b.dz * SHOT.speed * dt;
+    spawn(b.x, 0.95, b.z, 0, 0, 0, 0.09, 0.5, b.c, 1); if (Math.random() < 0.6) spawn(b.x - b.dx * 0.6, 0.95, b.z - b.dz * 0.6, rnd(-.4, .4), rnd(-.2, .4), rnd(-.4, .4), 0.22, 0.22, b.c, 0.7);
+    let dead = b.t > SHOT.life || Math.hypot(b.x - ARENA.x, b.z - ARENA.z) > ARENA.r + 1.5;
+    for (const o of ARENA.obs) if (Math.hypot(b.x - o[0], b.z - o[1]) < o[2]) dead = true;
+    if (dead) { for (let k = 0; k < 6; k++) spawn(b.x, 0.95, b.z, rnd(-2, 2), rnd(.5, 3), rnd(-2, 2), 0.3, rnd(.12, .22), b.c, 0.9, 9); bullets.splice(i, 1); }
+  }
+}
+function openArenaBoard() {
+  sheetBody.innerHTML = ''; sheet.classList.remove('hidden');
+  sheetBody.append(el('h2', '', '🎯 서바이벌 순위'), el('p', '', '지금 운동장 안에 있는 차량의 처치 수예요. 접속을 끊으면 초기화돼요.'));
+  const list = [...net.arena.entries()].sort((a, b) => b[1] - a[1]);
+  if (!list.length) sheetBody.append(el('p', '', '운동장 안에 아무도 없어요.'));
+  list.forEach(([id, k], i) => { const r = id === net.id ? { name: me.name, model: me.model } : net.players.get(id); if (r) sheetBody.append(rankRow(i, r.name, k + ' 처치', id === net.id, 'BYD ' + carById(r.model).name)); });
+}
+
 // ---------- 카메라
 function updateCamera(dt: number) {
   const portrait = innerHeight > innerWidth * 1.1;
@@ -377,12 +425,13 @@ const displayLooks: Look[] = CARS.map((c, i) => ({ ...defaultLook(c), twoTone: i
 
 // ---------- 이름표 / 장소 라벨
 const tagsEl = $('tags'), tags = new Map<string, HTMLElement>();
-function tag(key: string, cls: string, text: string, p: V3, maxD: number, bubble = '') {
+function tag(key: string, cls: string, text: string, p: V3, maxD: number, bubble = '', hp = -1) {
   let t = tags.get(key);
   const s = R.project(p);
   if (!s || s[2] > maxD) { if (t) t.style.display = 'none'; return; }
-  if (!t) { t = el('div', 'tag ' + cls); t.append(el('u'), el('b')); tagsEl.append(t); tags.set(key, t); }
-  const b = t.lastChild as HTMLElement, u = t.firstChild as HTMLElement;
+  if (!t) { t = el('div', 'tag ' + cls); const bar = el('s'); bar.append(el('i')); t.append(el('u'), el('b'), bar); tagsEl.append(t); tags.set(key, t); }
+  const b = t.children[1] as HTMLElement, u = t.firstChild as HTMLElement, bar = t.children[2] as HTMLElement;
+  bar.style.display = hp >= 0 ? 'block' : 'none'; if (hp >= 0) { (bar.firstChild as HTMLElement).style.width = hp + '%'; bar.classList.toggle('hi', hp > 50); }
   if (b.textContent !== text) b.textContent = text;
   if (u.textContent !== bubble) u.textContent = bubble; u.style.display = bubble ? 'block' : 'none';
   t.style.display = 'block'; t.style.transform = `translate(${s[0].toFixed(1)}px,${s[1].toFixed(1)}px) translate(-50%,-100%)`;
@@ -510,6 +559,13 @@ function renderZone() {
     btn('🏆 기록', openBest, true);
     return;
   }
+  if (place?.id === 'arena') {
+    if (!net.online) { z.append(el('span', '', '🎯 서버에 연결되면 서바이벌에 참여할 수 있어요')); return; }
+    if (!inArenaNow()) { z.append(el('span', '', '🎯 입구로 들어가면 대결이 시작돼요')); btn('순위', openArenaBoard, true); return; }
+    const hp = el('span', 'hp'); const fill = el('i'); fill.style.width = net.hp + '%'; hp.append(fill);
+    z.append(el('span', '', 'HP'), hp, el('span', '', `${net.hp} · 처치 ${net.arena.get(net.id) ?? 0}`)); btn('순위', openArenaBoard, true);
+    return;
+  }
   if (!place) return;
   if (place.id === 'wash') {
     if (washAnim) { z.append(el('span', '', washAnim.kind === 'foam' ? '🫧 거품 뿌리는 중…' : washAnim.kind === 'rinse' ? '💦 헹구는 중…' : '✨ 광택 내는 중…')); return; }
@@ -535,7 +591,8 @@ function updateZone() {
     if (!place || place.id !== 'wash') { if (washStage === 2) washStage = 0; }
   }
   const rc = inRace() || place?.id === 'race' ? [net.online, net.race.phase, net.race.ids.size, inRace(), Math.ceil((net.race.until - performance.now()) / 1000)].join() : '';
-  const key = (place?.id ?? '') + '|' + (place?.id === 'wash' ? [inBay(), Math.abs(me.v) > 0.6, washStage, !!washAnim].join() : '') + rc;
+  const ak = place?.id === 'arena' ? [net.online, inArenaNow(), net.hp, net.arena.get(net.id) ?? 0].join() : '';
+  const key = ak + (place?.id ?? '') + '|' + (place?.id === 'wash' ? [inBay(), Math.abs(me.v) > 0.6, washStage, !!washAnim].join() : '') + rc;
   if (key !== zoneKey) { zoneKey = key; renderZone(); }
 }
 let bannerT = 0;
@@ -619,6 +676,7 @@ function frame(now: number) {
 
   drive(dt); updateWash(dt); updateCamera(dt);
   if (started) { updateZone(); updateNav(); updateRace(); }
+  updateArena(dt);
 
   // 원격 플레이어 보간
   for (const o of net.players.values()) {
@@ -647,8 +705,8 @@ function frame(now: number) {
   if (takePhoto) { takePhoto = false; savePhoto(); }
 
   // 이름표
-  if (started) tag('me', 'me', me.name, [me.x, carById(me.model).H + 0.55, me.z], 60, me.bubble);
-  for (const o of net.players.values()) tag('p' + o.id, '', o.name, [o.x, carById(o.model).H + 0.55, o.z], 140, o.bubble || '');
+  if (started) tag('me', 'me', me.name, [me.x, carById(me.model).H + 0.55, me.z], 60, me.bubble, inArenaNow() ? net.hp : -1);
+  for (const o of net.players.values()) tag('p' + o.id, '', o.name, [o.x, carById(o.model).H + 0.55, o.z], 140, o.bubble || '', net.arena.has(o.id) ? o.hp : -1);
   for (const p of PLACES) if (p !== dest) tag('pl' + p.id, 'place', p.icon + ' ' + p.name, [p.x, p.ly, p.z], 230); else dropTag('pl' + p.id);
   if (dest) tag('dest', 'dest', `📍 ${dest.name}`, [dest.x, dest.ly + 7, dest.z], 2000);
   DISPLAY_SPOTS.forEach((d, i) => tag('d' + i, 'disp', '전시 · ' + CARS[i].name, [d[0], 2.6, d[1]], 26));
@@ -668,7 +726,7 @@ function frame(now: number) {
 }
 
 // ---------- 시작
-buildStart(); buildPlaces(); buildChat(); setupRace(); applySettings(); refreshCarCard(); refreshStatus();
+buildStart(); buildPlaces(); buildChat(); setupRace(); setupArena(); applySettings(); refreshCarCard(); refreshStatus();
 $('btnCustom').onclick = openCustom; $('btnPhoto').onclick = () => { takePhoto = true; }; $('btnHornPc').onclick = doHorn;
 $('btnSet').onclick = openSettings; $('nav').onclick = () => { if (!racing()) setDest(null); }; $('chipAuth').onclick = openAuth;
 $('btnTime').onclick = () => { const o = ['auto', 'day', 'sunset', 'night']; settings.tod = o[(o.indexOf(settings.tod) + 1) % 4]; store.set('settings', settings); applySettings(); toast('시간대: ' + ['자동 순환', '낮', '노을', '밤'][o.indexOf(settings.tod)]); };
@@ -677,5 +735,5 @@ document.querySelectorAll<HTMLButtonElement>('#mtoggles button').forEach(b => b.
   for (const k of ['places', 'carCard', 'chat']) $(k).classList.remove('open');
   if (!was) { $(id).classList.add('open'); if (id === 'chat') $('chatDot').classList.remove('on'); }
 });
-(window as any).__bdw = { me, net, cam, lineup: (x: number, z: number, h: number) => { lineup = [x, z, h]; }, pad, setDest, get dest() { return dest; }, get joined() { return joined; }, get time() { return time; }, teleport, PLACES, settings, start: () => $('btnStart').click() }; // 테스트/디버그용
+(window as any).__bdw = { me, net, cam, bullets, ARENA, lineup: (x: number, z: number, h: number) => { lineup = [x, z, h]; }, pad, setDest, get dest() { return dest; }, get joined() { return joined; }, get time() { return time; }, teleport, PLACES, settings, start: () => $('btnStart').click() }; // 테스트/디버그용
 requestAnimationFrame(frame);

@@ -7,12 +7,16 @@ export const LOOP = { a: 172, b: 132, w: 9 };
 export interface Collider { x: number; z: number; r?: number; hx?: number; hz?: number; }
 export interface Place { id: string; name: string; icon: string; desc: string; x: number; z: number; r: number; spawn: [number, number, number]; ly: number; }
 
+// 종합운동장 서바이벌 구역 (server/server.mjs 의 ARENA 와 같은 값)
+export const ARENA = { x: -100, z: -64, r: 23.5, wall: 25, gap: 0.21, exit: [-66, -64, -Math.PI / 2] as [number, number, number],
+  obs: [[-100, -64, 2.4], [-90, -56, 1.6], [-110, -56, 1.6], [-90, -72, 1.6], [-110, -72, 1.6]] as [number, number, number][] };
 export const PLACES: Place[] = [
   { id: 'lounge', name: '오너 라운지', icon: '🏁', desc: '차를 세워두고 구경하고 사진 찍는 광장', x: 0, z: 0, r: 30, spawn: [0, 15, Math.PI], ly: 9 },
   { id: 'wash', name: '셀프 세차장', icon: '🫧', desc: '베이에 정차하면 세차를 시작할 수 있어요', x: -85, z: -20, r: 15, spawn: [-85, -6, Math.PI], ly: 8.5 },
   { id: 'cafe', name: '감성 카페', icon: '☕', desc: '테라스 앞 주차장에 세우고 쉬어가요', x: 72, z: 14, r: 16, spawn: [68, 2, 0], ly: 9 },
   { id: 'coast', name: '오션뷰 드라이브 코스', icon: '🌊', desc: '섬을 한 바퀴 도는 해안도로와 전망대', x: 0, z: 142, r: 17, spawn: [-14, 132, Math.PI / 2], ly: 7 },
   { id: 'race', name: '서킷 출발선', icon: '🏎️', desc: '해안도로 한 바퀴 레이스 · 최대 6명', x: 14, z: 131, r: 14, spawn: [-2, 131.8, Math.PI / 2], ly: 9 },
+  { id: 'arena', name: '종합운동장 서바이벌', icon: '🎯', desc: '운동장 안에서만 페인트볼 대결', x: ARENA.x, z: ARENA.z, r: 24.2, spawn: ARENA.exit, ly: 15 },
   { id: 'tune', name: '튜닝샵', icon: '🔧', desc: '턴테이블 위에서 차량을 꾸며보세요', x: 9, z: -70, r: 7, spawn: [9, -70, -Math.PI / 2], ly: 9.5 },
 ];
 export const START_X = 24; // 레이스 출발선 (server/server.mjs 의 TRACK 과 같은 값)
@@ -39,6 +43,7 @@ export function onRoad(x: number, z: number): boolean {
   if (Math.abs(z) < 4.5 && Math.abs(x) < LOOP.a) return true;
   if (Math.abs(x) < 4.5 && Math.abs(z) < LOOP.b + 40) return true;
   if (x * x + z * z < 29 * 29) return true;
+  if (Math.hypot(x - ARENA.x, z - ARENA.z) < ARENA.wall) return true;
   for (const r of PADS) if (x > r[0] && x < r[2] && z > r[1] && z < r[3]) return true;
   return false;
 }
@@ -48,6 +53,7 @@ const PADS: [number, number, number, number][] = [
   [58, 4, 108, 34],    // 카페
   [2, -80, 34, -60],   // 튜닝샵
   [-13, 137, 13, 151], // 전망대
+  [-75, -68.5, -4, -59.5], // 운동장 진입로
 ];
 
 export function buildWorld() {
@@ -93,6 +99,7 @@ export function buildWorld() {
     const len = alongX ? x1 - x0 : z1 - z0;
     for (let d = 2; d < len - 2; d += 5) alongX ? mb.flat(x0 + d, z0 - 0.13, x0 + d + 2.4, z0 + 0.13, 0.05) : mb.flat(x0 - 0.13, z0 + d, x0 + 0.13, z0 + d + 2.4, 0.05);
   };
+  road(-74.5, -64, -4.5, -64); // 운동장 진입로
   road(-LOOP.a + 3, 0, -27, 0); road(27, 0, LOOP.a - 3, 0); road(0, -LOOP.b + 3, 0, -27); road(0, 27, 0, LOOP.b - 3);
   // 남쪽 산책로
   mb.c('#f0dcc0'); ringStrip(183.5, 143.5, -1.3, 1.3, 0.03, 80, 0.2, Math.PI - 0.2);
@@ -214,6 +221,37 @@ export function buildWorld() {
   mb.c('#5b6472'); mb.cyl(214, 13.8, 0, 1.7, 1.7, 0.25, 16); mb.glow('#fff1b8'); mb.cyl(214, 14.05, 0, 1.0, 1.0, 1.5, 12);
   mb.c('#ff9fb2'); mb.cyl(214, 15.55, 0, 1.5, 0.05, 1.3, 12, false);
 
+  // ---------- 종합운동장 (서바이벌 구역)
+  {
+    const A = ARENA, cx = A.x, cz = A.z;
+    mb.c('#e9a48f'); mb.disc(cx, 0.04, cz, 0, A.wall, 72);            // 트랙
+    mb.c('#ffffff'); for (const r of [16.6, 18.6, 20.6, 22.6]) mb.disc(cx, 0.05, cz, r, r + 0.14, 72);
+    mb.c('#b9e6a0'); mb.disc(cx, 0.055, cz, 0, 15, 56);              // 인필드
+    mb.c('#ffffff'); mb.disc(cx, 0.06, cz, 14.7, 15, 56); mb.disc(cx, 0.06, cz, 5.6, 5.85, 40); mb.flat(cx - 0.12, cz - 14.7, cx + 0.12, cz + 14.7, 0.06);
+    const N = 84, standCol = ['#ffd4dd', '#cfeeff', '#fff1b8', '#d5f5e3'];
+    for (let i = 0; i < N; i++) {
+      const a = (i + 0.5) / N * Math.PI * 2, da = Math.abs(((a + Math.PI) % (Math.PI * 2)) - Math.PI), c = Math.cos(a), sn = Math.sin(a), ry = Math.PI / 2 - a, seg = Math.PI * 2 / N;
+      if (da < A.gap) continue;                                       // 동쪽 입구
+      mb.c('#ffffff'); mb.box(cx + c * (A.wall + 0.45), 0, cz + sn * (A.wall + 0.45), (A.wall + 0.9) * seg + 0.05, 1.3, 0.9, ry);
+      mb.c('#ff9fb2'); mb.box(cx + c * (A.wall + 0.45), 1.3, cz + sn * (A.wall + 0.45), (A.wall + 0.9) * seg + 0.05, 0.16, 1.0, ry);
+      col.push({ x: cx + c * (A.wall + 0.45), z: cz + sn * (A.wall + 0.45), r: 1.05 });
+      if (da < 0.42) continue;                                        // 입구 옆은 관중석 없음
+      const sc = standCol[Math.floor(i / 7) % 4];
+      for (let t = 0; t < 3; t++) { const r = A.wall + 1.5 + t * 1.05; mb.c(t === 2 ? '#ffffff' : sc); mb.box(cx + c * r, 0, cz + sn * r, (r + 0.55) * seg + 0.05, 1.5 + t * 0.9, 1.1, ry); }
+    }
+    // 입구 게이트
+    for (const s of [-1, 1]) { const a = s * (A.gap + 0.03), gx = cx + Math.cos(a) * (A.wall + 0.6), gz = cz + Math.sin(a) * (A.wall + 0.6);
+      mb.c('#ffffff'); mb.cyl(gx, 0, gz, 0.6, 0.5, 6.4, 12); mb.c('#ff9fb2'); mb.cyl(gx, 0, gz, 0.8, 0.7, 0.6, 12); mb.glow('#fff1b8'); mb.blob(gx, 6.9, gz, 0.55, 0.55, 0.55, 8, 5); col.push({ x: gx, z: gz, r: 0.75 }); }
+    mb.c('#ff9fb2'); mb.box(cx + A.wall + 0.6, 5.2, cz, 0.7, 1.2, 12.6); mb.c('#ffffff'); mb.box(cx + A.wall + 0.98, 5.45, cz, 0.08, 0.7, 10.5);
+    // 엄폐물 기둥
+    A.obs.forEach((o, i) => { const h = i ? 2.3 : 3.0; mb.c(i ? ['#cdc4f5', '#9fe0d2', '#ffe08a', '#8ec5e8'][i - 1] : '#ff9fb2'); mb.cyl(o[0], 0, o[1], o[2], o[2] * 0.94, h, 20); mb.c('#ffffff'); mb.cyl(o[0], h, o[1], o[2] * 1.04, o[2] * 1.04, 0.18, 20); mb.cyl(o[0], 0.5, o[1], o[2] * 1.01, o[2] * 1.01, 0.25, 20); col.push({ x: o[0], z: o[1], r: o[2] }); });
+    mb.c('#ffffff'); mb.cyl(cx, 3.18, cz, 0.08, 0.08, 3.2, 6); mb.c('#ff7a92'); mb.tri([cx, 6.3, cz], [cx, 5.3, cz], [cx + 1.6, 5.8, cz], [0, 0, 1]); mb.tri([cx, 6.3, cz], [cx, 5.3, cz], [cx + 1.6, 5.8, cz], [0, 0, -1]);
+    // 조명탑
+    for (const a of [0.9, 2.25, 4.03, 5.38]) { const lx = cx + Math.cos(a) * (A.wall + 5.2), lz = cz + Math.sin(a) * (A.wall + 5.2);
+      mb.c('#6b7385'); mb.cyl(lx, 0, lz, 0.4, 0.25, 13, 8); mb.c('#4b4f66'); mb.box(lx - Math.cos(a) * 0.5, 12.6, lz - Math.sin(a) * 0.5, 3.4, 1.9, 0.5, Math.PI / 2 - a);
+      mb.glow('#fff6cf'); mb.box(lx - Math.cos(a) * 0.82, 12.8, lz - Math.sin(a) * 0.82, 3.0, 1.5, 0.12, Math.PI / 2 - a); col.push({ x: lx, z: lz, r: 0.6 }); }
+  }
+
   // ---------- 레이스 출발선: 체커 무늬 + 게이트
   {
     const zc = LOOP.b * Math.sqrt(1 - (START_X / LOOP.a) ** 2);
@@ -241,6 +279,7 @@ export function buildWorld() {
     if (Math.abs(z) < 5.5 + m && Math.abs(x) < LOOP.a) return true;
     if (Math.abs(x) < 5.5 + m && Math.abs(z) < LOOP.b) return true;
     if (x * x + z * z < (31 + m) ** 2) return true;
+    if (Math.hypot(x - ARENA.x, z - ARENA.z) < 31 + m) return true;
     for (const r of PADS) if (x > r[0] - m - 1 && x < r[2] + m + 1 && z > r[1] - m - 1 && z < r[3] + m + 1) return true;
     if (x > -40 - m && x < -20 + m && z > -41 - m && z < -27 + m) return true; // 클럽하우스
     return false;

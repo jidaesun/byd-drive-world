@@ -109,6 +109,47 @@ setInterval(() => {
   broadcast({ t: 'rp', el: Date.now() - race.t0, p: [...race.entrants.values()].map(e => [e.p.id, e.cp, e.done ? 1 : 0]) });
 }, 500);
 
+// ---------- 서바이벌: 종합운동장 안에서만 발사·피격이 일어난다. 총알 이동·명중·HP·처치는 서버가 판정한다
+const ARENA = { x: -100, z: -64, r: 23.5, obs: [[-100, -64, 2.4], [-90, -56, 1.6], [-110, -56, 1.6], [-90, -72, 1.6], [-110, -72, 1.6]] }; // client/src/world.ts 의 ARENA 와 같은 값
+const SHOT = { cd: 300, speed: 46, life: 1.0, dmg: 10, hitR: 1.2, muzzle: 2.9 };
+const bullets = []; let bulletId = 1;
+const r2 = v => Math.round(v * 100) / 100;
+const arenaBoard = () => ({ t: 'arena', p: [...players.values()].filter(p => p.inArena).map(p => [p.id, p.kills]) });
+function arenaTrack(p) {
+  const inside = Math.hypot(p.s[0] - ARENA.x, p.s[1] - ARENA.z) < ARENA.r;
+  if (inside === p.inArena) return;
+  p.inArena = inside; if (!inside) { p.hp = 100; p.ko = false; } // 운동장을 나가면 체력 회복
+  broadcast(arenaBoard());
+}
+function fire(p) {
+  const now = Date.now(); if (!p.inArena || p.ko || now - p.lastShot < SHOT.cd) return;
+  p.lastShot = now;
+  const h = p.s[2], dx = Math.sin(h), dz = Math.cos(h), b = { id: bulletId++, o: p.id, x: p.s[0] + dx * SHOT.muzzle, z: p.s[1] + dz * SHOT.muzzle, dx, dz, t: now };
+  bullets.push(b); broadcast({ t: 'shot', b: b.id, id: p.id, x: r2(b.x), z: r2(b.z), h: r2(h) });
+}
+setInterval(() => {
+  const now = Date.now(), step = SHOT.speed * 0.05;
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    const b = bullets[i], x0 = b.x, z0 = b.z; b.x += b.dx * step; b.z += b.dz * step;
+    // 이번 구간(선분)에서 가장 먼저 닿는 대상을 찾는다
+    const along = (cx, cz, r) => { let t = ((cx - x0) * b.dx + (cz - z0) * b.dz) / step; t = Math.max(0, Math.min(1, t)); const px = x0 + b.dx * step * t - cx, pz = z0 + b.dz * step * t - cz; return px * px + pz * pz < r * r ? t : 2; };
+    let bestT = 2, victim = null;
+    for (const o of ARENA.obs) { const t = along(o[0], o[1], o[2]); if (t < bestT) { bestT = t; victim = null; } }
+    for (const p of players.values()) {
+      if (p.id === b.o || !p.inArena || p.ko) continue;
+      const fx = Math.sin(p.s[2]) * 1.1, fz = Math.cos(p.s[2]) * 1.1; // 차체 앞·뒤 두 원으로 근사
+      const t = Math.min(along(p.s[0] + fx, p.s[1] + fz, SHOT.hitR), along(p.s[0] - fx, p.s[1] - fz, SHOT.hitR));
+      if (t < bestT) { bestT = t; victim = p; }
+    }
+    if (victim) {
+      const shooter = players.get(b.o); victim.hp = Math.max(0, victim.hp - SHOT.dmg);
+      broadcast({ t: 'hit', b: b.id, id: victim.id, hp: victim.hp, by: b.o });
+      if (victim.hp === 0) { victim.ko = true; if (shooter) shooter.kills++; broadcast({ t: 'ko', id: victim.id, name: victim.name, by: b.o, byName: shooter ? shooter.name : '' }); broadcast(arenaBoard()); }
+    }
+    if (bestT <= 1 || now - b.t > SHOT.life * 1000 || Math.hypot(b.x - ARENA.x, b.z - ARENA.z) > ARENA.r + 1.5) bullets.splice(i, 1);
+  }
+}, 50);
+
 const pub = p => ({ id: p.id, name: p.name, model: p.model, look: p.look, p: p.s });
 function broadcast(obj, except, filter) {
   const data = JSON.stringify(obj);
@@ -132,8 +173,8 @@ wss.on('connection', ws => {
     if (!me) {
       if (m.t !== 'hello') return;
       if (players.size >= MAX_PLAYERS) { ws.send(JSON.stringify({ t: 'full' })); return ws.close(); }
-      me = { id: nextId++, ws, name: cleanName(m.name), model: MODELS.includes(m.model) ? m.model : 'atto3', look: cleanLook(m.look), s: [0, 15, Math.PI, 0, 0, 0, 0, 0], rl: {} };
-      ws.send(JSON.stringify({ t: 'welcome', id: me.id, players: [...players.values()].map(pub), race: raceState(), track: { cps: TRACK.cps }, best: race.best }));
+      me = { id: nextId++, ws, name: cleanName(m.name), model: MODELS.includes(m.model) ? m.model : 'atto3', look: cleanLook(m.look), s: [0, 15, Math.PI, 0, 0, 0, 0, 0], rl: {}, hp: 100, kills: 0, ko: false, inArena: false, lastShot: 0 };
+      ws.send(JSON.stringify({ t: 'welcome', id: me.id, players: [...players.values()].map(pub), race: raceState(), track: { cps: TRACK.cps }, best: race.best, arena: arenaBoard().p }));
       players.set(me.id, me);
       broadcast({ t: 'join', player: pub(me) }, me);
       console.log(`[join] #${me.id} ${me.name} (${players.size}명 접속 중)`);
@@ -144,7 +185,7 @@ wss.on('connection', ws => {
         if (!Array.isArray(m.p) || !allow(me, 's', 40, 1000)) return;
         const a = m.p;
         me.s = [num(a[0], -400, 400), num(a[1], -400, 400), num(a[2], -1e4, 1e4), num(a[3], -60, 60), num(a[4], -1, 1), num(a[5], 0, 1), num(a[6], 0, 1), a[7] ? 1 : 0];
-        raceProgress(me);
+        raceProgress(me); arenaTrack(me);
         break;
       }
       case 'chat': {
@@ -163,13 +204,14 @@ wss.on('connection', ws => {
         break;
       case 'race_join': if (allow(me, 'race', 6, 10000)) raceJoin(me); break;
       case 'race_leave': raceLeave(me); break;
+      case 'fire': fire(me); break;
       case 'horn': if (allow(me, 'horn', 4, 4000)) broadcast({ t: 'horn', id: me.id }, me); break;
       case 'emote': if (allow(me, 'emote', 4, 6000)) broadcast({ t: 'emote', id: me.id, e: String(m.e ?? '').slice(0, 8) }, me); break;
     }
   });
   ws.on('close', () => {
     if (!me) return;
-    players.delete(me.id); raceLeave(me); broadcast({ t: 'leave', id: me.id });
+    players.delete(me.id); raceLeave(me); if (me.inArena) broadcast(arenaBoard()); broadcast({ t: 'leave', id: me.id });
     console.log(`[leave] #${me.id} ${me.name} (${players.size}명 접속 중)`);
   });
   ws.on('error', () => {});
@@ -179,7 +221,7 @@ wss.on('connection', ws => {
 setInterval(() => {
   if (players.size < 2) return;
   const r = v => Math.round(v * 100) / 100;
-  const snap = JSON.stringify({ t: 'snap', s: [...players.values()].map(p => [p.id, r(p.s[0]), r(p.s[1]), r(p.s[2]), r(p.s[3]), r(p.s[4]), r(p.s[5]), r(p.s[6]), p.s[7]]) });
+  const snap = JSON.stringify({ t: 'snap', s: [...players.values()].map(p => [p.id, r(p.s[0]), r(p.s[1]), r(p.s[2]), r(p.s[3]), r(p.s[4]), r(p.s[5]), r(p.s[6]), p.s[7], p.hp]) });
   for (const p of players.values()) if (p.ws.readyState === 1) p.ws.send(snap);
 }, 66);
 // 끊어진 연결 정리
